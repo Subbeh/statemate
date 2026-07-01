@@ -24,6 +24,7 @@ var statusCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(statusCmd)
+	statusCmd.Flags().Bool("short", false, "compact output for statuslines (format: +N ~N !N)")
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
@@ -104,6 +105,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		filteredOrphans = append(filteredOrphans, o)
 	}
 
+	short, _ := cmd.Flags().GetBool("short")
+	if short {
+		return printShortStatus(filteredChanges, filteredOrphans)
+	}
+
 	if len(filteredChanges) == 0 && len(filteredOrphans) == 0 {
 		fmt.Println("Everything is up to date")
 		return nil
@@ -143,6 +149,42 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(os.Stderr, "Run 'mate forget <path>' to remove from tracking, or delete the target file.")
 	}
 
+	return nil
+}
+
+func printShortStatus(changes []*target.Change, orphans []string) error {
+	var added, modified, conflicts int
+	for _, c := range changes {
+		switch c.Status {
+		case target.StatusNew:
+			added++
+		case target.StatusModified:
+			modified++
+		case target.StatusConflict:
+			conflicts++
+		}
+	}
+
+	// No changes = no output (for statusline to hide)
+	if added == 0 && modified == 0 && conflicts == 0 && len(orphans) == 0 {
+		return nil
+	}
+
+	var parts []string
+	if added > 0 {
+		parts = append(parts, fmt.Sprintf("+%d", added))
+	}
+	if modified > 0 {
+		parts = append(parts, fmt.Sprintf("~%d", modified))
+	}
+	if conflicts > 0 {
+		parts = append(parts, fmt.Sprintf("!%d", conflicts))
+	}
+	if len(orphans) > 0 {
+		parts = append(parts, fmt.Sprintf("?%d", len(orphans)))
+	}
+
+	fmt.Println(strings.Join(parts, " "))
 	return nil
 }
 

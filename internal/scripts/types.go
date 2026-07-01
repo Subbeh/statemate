@@ -2,7 +2,6 @@ package scripts
 
 import (
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -70,19 +69,16 @@ func (s *Script) IsExecutable() bool {
 	return info.Mode()&0111 != 0
 }
 
-// Script naming format: <order>-<name>#<freq>#<timing>[#template].<ext>
+// Script naming format: <order>-<name>.<ext>#<freq>#<timing>[#template]
 // Examples:
-//   01-setup#once#before.sh
-//   02-cleanup#always#after.sh
-//   03-render#onchange#before#template.sh
+//   01-setup.sh#once#before
+//   02-cleanup.sh#always#after
+//   03-render.sh#onchange#before#template
 //   manual-task.sh (no attributes = manual)
 var orderPattern = regexp.MustCompile(`^(\d+)-(.+)$`)
 
 func ParseScriptName(filename string) (name string, freq Frequency, timing Timing, template bool, order int) {
-	ext := filepath.Ext(filename)
-	base := strings.TrimSuffix(filename, ext)
-
-	parts := strings.Split(base, "#")
+	parts := strings.Split(filename, "#")
 	nameWithOrder := parts[0]
 
 	// Parse order prefix if present

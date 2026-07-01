@@ -15,17 +15,17 @@ func TestParseScriptName(t *testing.T) {
 		wantTemplate bool
 		wantOrder    int
 	}{
-		{"01-setup#once#before.sh", "setup", FreqOnce, TimingBefore, false, 1},
-		{"02-cleanup#always#after.sh", "cleanup", FreqAlways, TimingAfter, false, 2},
-		{"03-render#onchange#before#template.sh", "render", FreqOnchange, TimingBefore, true, 3},
-		{"10-install#once#after.sh", "install", FreqOnce, TimingAfter, false, 10},
-		{"05-prep#always#before.sh", "prep", FreqAlways, TimingBefore, false, 5},
-		{"manual-task.sh", "manual-task", FreqManual, TimingBefore, false, 0},
+		{"01-setup.sh#once#before", "setup.sh", FreqOnce, TimingBefore, false, 1},
+		{"02-cleanup.sh#always#after", "cleanup.sh", FreqAlways, TimingAfter, false, 2},
+		{"03-render.sh#onchange#before#template", "render.sh", FreqOnchange, TimingBefore, true, 3},
+		{"10-install.sh#once#after", "install.sh", FreqOnce, TimingAfter, false, 10},
+		{"05-prep.sh#always#before", "prep.sh", FreqAlways, TimingBefore, false, 5},
+		{"manual-task.sh", "manual-task.sh", FreqManual, TimingBefore, false, 0},
 		{"script", "script", FreqManual, TimingBefore, false, 0},
-		{"100-long-name-here#onchange#after.zsh", "long-name-here", FreqOnchange, TimingAfter, false, 100},
+		{"100-long-name-here.zsh#onchange#after", "long-name-here.zsh", FreqOnchange, TimingAfter, false, 100},
 		// Frequency only (timing defaults to before)
-		{"01-setup#once.sh", "setup", FreqOnce, TimingBefore, false, 1},
-		{"01-setup#always.sh", "setup", FreqAlways, TimingBefore, false, 1},
+		{"01-setup.sh#once", "setup.sh", FreqOnce, TimingBefore, false, 1},
+		{"01-setup.sh#always", "setup.sh", FreqAlways, TimingBefore, false, 1},
 	}
 
 	for _, tc := range tests {
@@ -170,7 +170,7 @@ func TestDiscoverer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	scriptPath := filepath.Join(scriptsDir, "01-test#once#before.sh")
+	scriptPath := filepath.Join(scriptsDir, "01-test.sh#once#before")
 	if err := os.WriteFile(scriptPath, []byte("#!/bin/bash\necho test"), 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestDiscoverer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sourceScriptPath := filepath.Join(sourceScriptsDir, "02-cleanup#always#after.sh")
+	sourceScriptPath := filepath.Join(sourceScriptsDir, "02-cleanup.sh#always#after")
 	if err := os.WriteFile(sourceScriptPath, []byte("#!/bin/bash\necho cleanup"), 0755); err != nil {
 		t.Fatal(err)
 	}

@@ -12,16 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `mate init` now initializes a git repository if not already in one
 - `mate status` now shows source directory column with header
 - `.mateignore` file support for excluding files from management (gitignore syntax)
-- New script naming format: `<order>-<name>#<freq>#<timing>[#template].<ext>`
-  - Example: `01-setup#once#before.sh`, `02-cleanup#always#after#template.sh`
+- New script naming format: `<order>-<name>.<ext>#<freq>#<timing>[#template]`
+  - Example: `01-setup.sh#once#before`, `02-cleanup.sh#always#after#template`
   - Frequency: `once`, `onchange`, `always` (omit for manual scripts)
   - Timing: `before`, `after` (defaults to `before`)
   - `#template` attribute for scripts that need template rendering
+  - Extension comes before attributes (consistent with file naming)
 - `default_source` config option to set default source for `mate add`
 - `mate add` now checks if file is already managed before adding
 - `mate add` interactive source selection with fuzzy search (when no default/flag)
 - Tab completion for commands: forget, delete, diff, edit, encrypt, decrypt, rename, run
 - Tab completion for flags: `--source`, `--profile`
+- `mate status --short` flag for compact statusline output (format: `+N ~N !N ?N`)
 - `.SourceDir` template variable for accessing the dotfiles source directory
 - `required` template function to error on missing/empty values
 - `var_files` config option to load additional variable files (e.g., secrets)
