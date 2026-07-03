@@ -13,6 +13,10 @@ type Attrs struct {
 	Encrypted bool
 	Template  bool
 	Symlink   bool
+	// Recursive attributes (inherited by children)
+	PermR  uint32
+	OwnerR string
+	GroupR string
 }
 
 func ParseAttrs(name string) (baseName string, attrs Attrs) {
@@ -35,10 +39,18 @@ func ParseAttrs(name string) (baseName string, attrs Attrs) {
 				if p, err := strconv.ParseUint(val, 8, 32); err == nil {
 					attrs.Perm = uint32(p)
 				}
+			case "perm-r":
+				if p, err := strconv.ParseUint(val, 8, 32); err == nil {
+					attrs.PermR = uint32(p)
+				}
 			case "owner":
 				attrs.Owner = val
+			case "owner-r":
+				attrs.OwnerR = val
 			case "group":
 				attrs.Group = val
+			case "group-r":
+				attrs.GroupR = val
 			}
 		} else {
 			switch part {
@@ -59,13 +71,24 @@ func (a *Attrs) Merge(parent Attrs) {
 	if a.Profile == "" {
 		a.Profile = parent.Profile
 	}
-	if a.Perm == 0 {
-		a.Perm = parent.Perm
+	// Inherit recursive attributes from parent
+	if a.PermR == 0 {
+		a.PermR = parent.PermR
 	}
-	if a.Owner == "" {
-		a.Owner = parent.Owner
+	if a.OwnerR == "" {
+		a.OwnerR = parent.OwnerR
 	}
-	if a.Group == "" {
-		a.Group = parent.Group
+	if a.GroupR == "" {
+		a.GroupR = parent.GroupR
+	}
+	// Apply recursive attributes as defaults if not explicitly set
+	if a.Perm == 0 && a.PermR != 0 {
+		a.Perm = a.PermR
+	}
+	if a.Owner == "" && a.OwnerR != "" {
+		a.Owner = a.OwnerR
+	}
+	if a.Group == "" && a.GroupR != "" {
+		a.Group = a.GroupR
 	}
 }
