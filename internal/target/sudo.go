@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 func needsSudo(path string) bool {
@@ -26,10 +27,51 @@ func needsSudo(path string) bool {
 }
 
 func isWritableByCurrentUser(info os.FileInfo) bool {
-	mode := info.Mode()
-	if mode.Perm()&0200 != 0 {
+	mode := info.Mode().Perm()
+
+	// Check world-writable
+	if mode&0002 != 0 {
 		return true
 	}
+
+	// Get current user
+	currentUser, err := user.Current()
+	if err != nil {
+		return false
+	}
+
+	// Check if we're root
+	if currentUser.Uid == "0" {
+		return true
+	}
+
+	// Get file's uid/gid (Unix-specific)
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false
+	}
+
+	// Check owner
+	if fmt.Sprintf("%d", stat.Uid) == currentUser.Uid {
+		return mode&0200 != 0
+	}
+
+	// Check group
+	if fmt.Sprintf("%d", stat.Gid) == currentUser.Gid {
+		return mode&0020 != 0
+	}
+
+	// Check supplementary groups
+	gids, err := currentUser.GroupIds()
+	if err == nil {
+		fileGid := fmt.Sprintf("%d", stat.Gid)
+		for _, gid := range gids {
+			if gid == fileGid {
+				return mode&0020 != 0
+			}
+		}
+	}
+
 	return false
 }
 
