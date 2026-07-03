@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tab completion for commands: forget, delete, diff, edit, encrypt, decrypt, rename, run
 - Tab completion for flags: `--source`, `--profile`
 - `mate status --short` flag for compact statusline output (format: `+N ~N !N ?N`)
+- Source-level `owner`, `group`, and `perm` defaults in `.mate.yaml`
 - `.SourceDir` template variable for accessing the dotfiles source directory
 - `required` template function to error on missing/empty values
 - `var_files` config option to load additional variable files (e.g., secrets)

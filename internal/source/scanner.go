@@ -4,6 +4,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	gitignore "github.com/sabhiram/go-gitignore"
@@ -102,8 +103,21 @@ func (s *Scanner) buildEntry(sourceDir, fullPath, relPath string, info os.FileIn
 	parentAttrs.Merge(sourceDirAttrs)
 	attrs.Merge(parentAttrs)
 
-	if dirCfg != nil && dirCfg.Profile != "" && attrs.Profile == "" {
-		attrs.Profile = dirCfg.Profile
+	if dirCfg != nil {
+		if dirCfg.Profile != "" && attrs.Profile == "" {
+			attrs.Profile = dirCfg.Profile
+		}
+		if dirCfg.Owner != "" && attrs.Owner == "" {
+			attrs.Owner = dirCfg.Owner
+		}
+		if dirCfg.Group != "" && attrs.Group == "" {
+			attrs.Group = dirCfg.Group
+		}
+		if dirCfg.Perm != "" && attrs.Perm == 0 {
+			if p, err := strconv.ParseUint(dirCfg.Perm, 8, 32); err == nil {
+				attrs.Perm = uint32(p)
+			}
+		}
 	}
 
 	targetPath := s.resolveTarget(relPath, name, dirCfg)
