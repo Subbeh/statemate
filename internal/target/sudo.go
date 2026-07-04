@@ -7,18 +7,23 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"syscall"
 )
 
 func needsSudo(path string) bool {
 	dir := path
 	for dir != "/" {
-		info, err := os.Stat(dir)
+		// Use Lstat to not follow symlinks - we care about the path itself
+		info, err := os.Lstat(dir)
 		if err == nil {
+			// If it's a symlink, check the parent directory
+			if info.Mode()&os.ModeSymlink != 0 {
+				dir = filepath.Dir(dir)
+				continue
+			}
 			return !isWritableByCurrentUser(info)
 		}
-		dir = strings.TrimSuffix(dir, "/"+filepath.Base(dir))
+		dir = filepath.Dir(dir)
 		if dir == "" {
 			dir = "/"
 		}
