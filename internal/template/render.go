@@ -2,6 +2,7 @@ package template
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"text/template"
@@ -51,6 +52,13 @@ func funcMap(ctx *Context) template.FuncMap {
 				return nil, fmt.Errorf("required value is missing or empty")
 			}
 			return val, nil
+		},
+		"base64Decode": func(val string) (string, error) {
+			decoded, err := base64.StdEncoding.DecodeString(val)
+			if err != nil {
+				return "", fmt.Errorf("base64 decode: %w", err)
+			}
+			return string(decoded), nil
 		},
 	}
 }

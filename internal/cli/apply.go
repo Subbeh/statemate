@@ -10,6 +10,7 @@ import (
 	"github.com/subbeh/statemate/internal/encrypt"
 	"github.com/subbeh/statemate/internal/profile"
 	"github.com/subbeh/statemate/internal/scripts"
+	"github.com/subbeh/statemate/internal/secrets"
 	"github.com/subbeh/statemate/internal/source"
 	"github.com/subbeh/statemate/internal/state"
 	"github.com/subbeh/statemate/internal/target"
@@ -94,6 +95,27 @@ func runApply(cmd *cobra.Command, args []string) error {
 		enc, err = encrypt.NewAgeEncryptor(cfg.Age.Identity, cfg.Age.IdentityCommand, cfg.Age.Recipients)
 		if err != nil {
 			return fmt.Errorf("setting up encryption: %w", err)
+		}
+	}
+
+	secretsCfg := resolveSecretsWithSources(cfg, profileName, sourcePaths)
+	if len(secretsCfg.Providers) > 0 {
+		identitySource := ""
+		if cfg.Age != nil {
+			identitySource = cfg.Age.Identity
+		}
+		mgr, err := secrets.NewManager(secretsCfg, enc, identitySource)
+		if err != nil {
+			return fmt.Errorf("setting up secrets: %w", err)
+		}
+		secretsMap, err := mgr.LoadSecrets()
+		if err != nil {
+			pending := mgr.PendingCount()
+			if pending > 0 {
+				fmt.Fprintf(os.Stderr, "Warning: %d secrets not cached. Run 'mate secrets fetch' first.\n", pending)
+			}
+		} else {
+			tmplCtx.Secrets = secretsMap
 		}
 	}
 

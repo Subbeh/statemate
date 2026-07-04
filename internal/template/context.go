@@ -19,6 +19,7 @@ type Context struct {
 	Username  string
 	SourceDir string
 	Vars      map[string]any
+	Secrets   map[string]any
 	Env       map[string]string
 }
 
@@ -39,6 +40,7 @@ func NewContext(cfg *config.Config, profileName string) (*Context, error) {
 		Username:  username,
 		SourceDir: cfg.SourceDir(),
 		Vars:      make(map[string]any),
+		Secrets:   make(map[string]any),
 		Env:       make(map[string]string),
 	}
 

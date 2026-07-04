@@ -8,6 +8,7 @@ import (
 	"github.com/subbeh/statemate/internal/config"
 	"github.com/subbeh/statemate/internal/encrypt"
 	"github.com/subbeh/statemate/internal/profile"
+	"github.com/subbeh/statemate/internal/secrets"
 	"github.com/subbeh/statemate/internal/source"
 	"github.com/subbeh/statemate/internal/state"
 	"github.com/subbeh/statemate/internal/target"
@@ -97,6 +98,20 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating template context: %w", err)
 	}
 
+	secretsCfg := resolveSecretsWithSources(cfg, profileName, sourcePaths)
+	if len(secretsCfg.Providers) > 0 {
+		identitySource := ""
+		if cfg.Age != nil {
+			identitySource = cfg.Age.Identity
+		}
+		mgr, err := secrets.NewManager(secretsCfg, enc, identitySource)
+		if err == nil {
+			if secretsMap, err := mgr.LoadSecrets(); err == nil {
+				tmplCtx.Secrets = secretsMap
+			}
+		}
+	}
+
 	for _, change := range changes {
 		if target.IsBinaryFile(change.Entry.SourcePath) {
 			fmt.Printf("Binary files differ: %s\n", util.ShortenPath(change.Entry.TargetPath))
@@ -104,7 +119,9 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		}
 
 		var diff string
-		if change.Entry.Attrs.Encrypted && enc != nil && enc.CanDecrypt() {
+		if change.Entry.Attrs.Encrypted && change.Entry.Attrs.Template && enc != nil && enc.CanDecrypt() {
+			diff, err = generateEncryptedTemplateDiff(change.Entry, enc, tmplCtx)
+		} else if change.Entry.Attrs.Encrypted && enc != nil && enc.CanDecrypt() {
 			diff, err = generateDecryptedDiff(change.Entry, enc)
 		} else if change.Entry.Attrs.Template {
 			diff, err = generateTemplatedDiff(change.Entry, tmplCtx)
@@ -124,6 +141,37 @@ func runDiff(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+func generateEncryptedTemplateDiff(entry *source.Entry, enc *encrypt.AgeEncryptor, tmplCtx *template.Context) (string, error) {
+	ciphertext, err := os.ReadFile(entry.SourcePath)
+	if err != nil {
+		return "", err
+	}
+
+	plaintext, err := enc.Decrypt(ciphertext)
+	if err != nil {
+		return "", fmt.Errorf("decrypting source: %w", err)
+	}
+
+	rendered, err := template.Render(plaintext, tmplCtx)
+	if err != nil {
+		return "", fmt.Errorf("rendering template: %w", err)
+	}
+
+	tmpFile, err := os.CreateTemp("", "mate-diff-*")
+	if err != nil {
+		return "", err
+	}
+	defer os.Remove(tmpFile.Name())
+	defer tmpFile.Close()
+
+	if _, err := tmpFile.Write(rendered); err != nil {
+		return "", err
+	}
+	tmpFile.Close()
+
+	return target.GenerateDiff(tmpFile.Name(), entry.TargetPath)
 }
 
 func generateDecryptedDiff(entry *source.Entry, enc *encrypt.AgeEncryptor) (string, error) {

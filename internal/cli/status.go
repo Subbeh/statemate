@@ -8,8 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/subbeh/statemate/internal/config"
+	"github.com/subbeh/statemate/internal/encrypt"
 	"github.com/subbeh/statemate/internal/profile"
 	"github.com/subbeh/statemate/internal/scripts"
+	"github.com/subbeh/statemate/internal/secrets"
 	"github.com/subbeh/statemate/internal/source"
 	"github.com/subbeh/statemate/internal/state"
 	"github.com/subbeh/statemate/internal/target"
@@ -25,7 +27,7 @@ var statusCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(statusCmd)
-	statusCmd.Flags().Bool("short", false, "compact output for statuslines (format: +N ~N !N ?N *N)")
+	statusCmd.Flags().Bool("short", false, "compact output for statuslines (format: +N ~N !N ?N *N sN)")
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
@@ -96,6 +98,20 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("checking pending scripts: %w", err)
 	}
 
+	var pendingSecrets int
+	secretsCfg := resolveSecretsWithSources(cfg, profileName, sourcePaths)
+	if len(secretsCfg.Providers) > 0 {
+		var enc *encrypt.AgeEncryptor
+		identitySource := ""
+		if cfg.Age != nil {
+			enc, _ = encrypt.NewAgeEncryptor(cfg.Age.Identity, cfg.Age.IdentityCommand, cfg.Age.Recipients)
+			identitySource = cfg.Age.Identity
+		}
+		if mgr, err := secrets.NewManager(secretsCfg, enc, identitySource); err == nil {
+			pendingSecrets = mgr.PendingCount()
+		}
+	}
+
 	var filterPath string
 	if len(args) > 0 {
 		filterPath = args[0]
@@ -119,10 +135,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	short, _ := cmd.Flags().GetBool("short")
 	if short {
-		return printShortStatus(filteredChanges, filteredOrphans, pendingScripts)
+		return printShortStatus(filteredChanges, filteredOrphans, pendingScripts, pendingSecrets)
 	}
 
-	if len(filteredChanges) == 0 && len(filteredOrphans) == 0 && len(pendingScripts) == 0 {
+	if len(filteredChanges) == 0 && len(filteredOrphans) == 0 && len(pendingScripts) == 0 && pendingSecrets == 0 {
 		fmt.Println("Everything is up to date")
 		return nil
 	}
@@ -172,10 +188,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	if pendingSecrets > 0 {
+		fmt.Printf("\nSecrets:\n  %d secrets need refresh (run 'mate secrets fetch')\n", pendingSecrets)
+	}
+
 	return nil
 }
 
-func printShortStatus(changes []*target.Change, orphans []string, pending scripts.Scripts) error {
+func printShortStatus(changes []*target.Change, orphans []string, pending scripts.Scripts, pendingSecrets int) error {
 	var added, modified, conflicts int
 	for _, c := range changes {
 		switch c.Status {
@@ -189,7 +209,7 @@ func printShortStatus(changes []*target.Change, orphans []string, pending script
 	}
 
 	// No changes = no output (for statusline to hide)
-	if added == 0 && modified == 0 && conflicts == 0 && len(orphans) == 0 && len(pending) == 0 {
+	if added == 0 && modified == 0 && conflicts == 0 && len(orphans) == 0 && len(pending) == 0 && pendingSecrets == 0 {
 		return nil
 	}
 
@@ -208,6 +228,9 @@ func printShortStatus(changes []*target.Change, orphans []string, pending script
 	}
 	if len(pending) > 0 {
 		parts = append(parts, fmt.Sprintf("*%d", len(pending)))
+	}
+	if pendingSecrets > 0 {
+		parts = append(parts, fmt.Sprintf("s%d", pendingSecrets))
 	}
 
 	fmt.Println(strings.Join(parts, " "))

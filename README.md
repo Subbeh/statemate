@@ -118,6 +118,47 @@ arch_root/
       default.conf          # deployed to /etc/keyd/default.conf as root
 ```
 
+## Secrets
+
+Native secrets management with provider-based fetching. Secrets are fetched from external providers, cached to an Age-encrypted file, and made available to templates via `.Secrets`.
+
+```yaml
+# mate.yaml (global) or source/.mate.yaml (per-source)
+secrets:
+  bitwarden:
+    items:
+      - path: github.token
+        item: github.com
+        type: field
+        field: gh-cli-token
+      - path: ssh.work.private
+        item: work-ssh-key
+        type: ssh
+        field: private
+      - path: gpg.key
+        item: gpg-keys
+        type: attachment
+        filename: user@example.com.priv.asc
+  command:
+    items:
+      - path: aws.token
+        cmd: "aws sts get-session-token | jq -r .Credentials.SessionToken"
+```
+
+**Bitwarden types:** `field`, `ssh`, `attachment`, `login`, `totp`
+
+**Usage:**
+```bash
+mate secrets fetch           # fetch all secrets
+mate secrets fetch "ssh.*"   # fetch matching pattern
+mate secrets list            # show cache status
+mate secrets status          # show secrets needing refresh
+```
+
+**In templates:** `{{ .Secrets.github.token }}`, `{{ required .Secrets.ssh.work.private }}`
+
+Profiles can add secrets (additive merge). Cache is Age-encrypted to local identity only.
+
 ## Scripts
 
 Place scripts in `.matescripts/` at repo root or in source directories.
@@ -143,6 +184,7 @@ Templates use Go's `text/template` syntax with these variables and functions:
 - `.Profile`, `.Hostname`, `.OS`, `.Arch`, `.HomeDir`, `.Username`
 - `.SourceDir` - path to dotfiles directory
 - `.Vars` - custom variables from config/var_files
+- `.Secrets` - secrets from configured providers (see Secrets section)
 - `.Env` - environment variables
 
 **Functions:**
@@ -150,6 +192,7 @@ Templates use Go's `text/template` syntax with these variables and functions:
 - `{{ default "fallback" .Vars.maybe }}` - use fallback if nil/empty
 - `{{ env "HOME" }}` - get environment variable
 - `{{ cmd "hostname -s" }}` - run command
+- `{{ base64Decode .Secrets.gpg.key }}` - decode base64 string
 
 ## Local Config
 
@@ -177,6 +220,7 @@ mate rename     Rename a managed file
 mate managed    List all managed files
 mate profile    Show active profile
 mate packages   Manage packages
+mate secrets    Manage secrets (fetch, list, status)
 mate scripts    List scripts
 mate run        Run a script manually
 mate doctor     Check configuration
