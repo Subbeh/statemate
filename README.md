@@ -120,44 +120,33 @@ arch_root/
 
 ## Secrets
 
-Native secrets management with provider-based fetching. Secrets are fetched from external providers, cached to an Age-encrypted file, and made available to templates via `.Secrets`.
+Secrets are referenced inline in templates using the `bitwarden` function. No separate config needed — just use them where you need them:
 
-```yaml
-# mate.yaml (global) or source/.mate.yaml (per-source)
-secrets:
-  bitwarden:
-    items:
-      - path: github.token
-        item: github.com
-        type: field
-        field: gh-cli-token
-      - path: ssh.work.private
-        item: work-ssh-key
-        type: ssh
-        field: private
-      - path: gpg.key
-        item: gpg-keys
-        type: attachment
-        filename: user@example.com.priv.asc
-  command:
-    items:
-      - path: aws.token
-        cmd: "aws sts get-session-token | jq -r .Credentials.SessionToken"
+```
+{{ bitwarden "github.com" "field" "gh-cli-token" }}
+{{ bitwarden "work-ssh-key" "ssh" "private" }}
+{{ bitwarden "gpg-keys" "attachment" "user@example.com.priv.asc" }}
+{{ bitwarden "github.com" "login" "password" }}
+{{ bitwarden "github.com" "totp" "" }}
 ```
 
-**Bitwarden types:** `field`, `ssh`, `attachment`, `login`, `totp`
+**Syntax:** `{{ bitwarden "<item-name>" "<type>" "<field>" }}`
 
-**Usage:**
+**Types:** `field` (custom field), `ssh` (private/public), `attachment` (base64-encoded), `login` (username/password/uri), `totp`
+
+`mate secrets fetch` scans all templates to discover references, fetches from Bitwarden, and caches to an Age-encrypted file. Apply and diff read from cache.
+
 ```bash
-mate secrets fetch           # fetch all secrets
-mate secrets fetch "ssh.*"   # fetch matching pattern
-mate secrets list            # show cache status
-mate secrets status          # show secrets needing refresh
+mate secrets fetch             # fetch all discovered secrets
+mate secrets fetch "github*"   # fetch matching item pattern
+mate secrets list              # show cache status per secret
+mate secrets status            # show secrets needing fetch
 ```
 
-**In templates:** `{{ .Secrets.github.token }}`, `{{ required .Secrets.ssh.work.private }}`
-
-Profiles can add secrets (additive merge). Cache is Age-encrypted to local identity only.
+Cache is encrypted to local Age identity only. Optional config:
+```yaml
+secrets_cache: "~/.local/state/statemate/secrets.age"  # default location
+```
 
 ## Scripts
 
@@ -184,15 +173,15 @@ Templates use Go's `text/template` syntax with these variables and functions:
 - `.Profile`, `.Hostname`, `.OS`, `.Arch`, `.HomeDir`, `.Username`
 - `.SourceDir` - path to dotfiles directory
 - `.Vars` - custom variables from config/var_files
-- `.Secrets` - secrets from configured providers (see Secrets section)
 - `.Env` - environment variables
 
 **Functions:**
+- `{{ bitwarden "item" "type" "field" }}` - fetch secret from cache (see Secrets)
 - `{{ required .Vars.secret }}` - error if value is missing/empty
 - `{{ default "fallback" .Vars.maybe }}` - use fallback if nil/empty
 - `{{ env "HOME" }}` - get environment variable
 - `{{ cmd "hostname -s" }}` - run command
-- `{{ base64Decode .Secrets.gpg.key }}` - decode base64 string
+- `{{ base64Decode "..." }}` - decode base64 string
 
 ## Local Config
 

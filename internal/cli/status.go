@@ -15,6 +15,7 @@ import (
 	"github.com/subbeh/statemate/internal/source"
 	"github.com/subbeh/statemate/internal/state"
 	"github.com/subbeh/statemate/internal/target"
+	"github.com/subbeh/statemate/internal/template"
 	"github.com/subbeh/statemate/internal/util"
 )
 
@@ -99,16 +100,29 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	var pendingSecrets int
-	secretsCfg := resolveSecretsWithSources(cfg, profileName, sourcePaths)
-	if len(secretsCfg.Providers) > 0 {
+	{
 		var enc *encrypt.AgeEncryptor
 		identitySource := ""
 		if cfg.Age != nil {
 			enc, _ = encrypt.NewAgeEncryptor(cfg.Age.Identity, cfg.Age.IdentityCommand, cfg.Age.Recipients)
 			identitySource = cfg.Age.Identity
 		}
-		if mgr, err := secrets.NewManager(secretsCfg, enc, identitySource); err == nil {
-			pendingSecrets = mgr.PendingCount()
+		if mgr, err := secrets.NewManager(enc, identitySource, cfg.SecretsCache); err == nil {
+			templateFiles := discoverTemplateFiles(cfg, sourcePaths)
+			tmplCtx, _ := template.NewContext(cfg, profileName)
+			var decryptFn func([]byte) ([]byte, error)
+			if enc != nil && enc.CanDecrypt() {
+				decryptFn = enc.Decrypt
+			}
+			items := secrets.DiscoverByRendering(templateFiles, tmplCtx, decryptFn)
+			cached := mgr.ListCached()
+			for _, item := range items {
+				if cached == nil {
+					pendingSecrets++
+				} else if _, ok := cached[item.Key.String()]; !ok {
+					pendingSecrets++
+				}
+			}
 		}
 	}
 

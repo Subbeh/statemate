@@ -7,7 +7,6 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/subbeh/statemate/internal/config"
 	"golang.org/x/term"
 )
 
@@ -29,7 +28,7 @@ func (b *BitwardenProvider) Available() error {
 	return nil
 }
 
-func (b *BitwardenProvider) Fetch(items []config.SecretItem) (map[string]string, error) {
+func (b *BitwardenProvider) Fetch(items []FetchItem) (map[string]string, error) {
 	if err := b.ensureUnlocked(); err != nil {
 		return nil, err
 	}
@@ -47,9 +46,9 @@ func (b *BitwardenProvider) Fetch(items []config.SecretItem) (map[string]string,
 	for _, item := range items {
 		value, err := b.extractValue(item, bwItems)
 		if err != nil {
-			return nil, fmt.Errorf("extracting %s: %w", item.Path, err)
+			return nil, fmt.Errorf("extracting %s: %w", item.Key.String(), err)
 		}
-		results[item.Path] = value
+		results[item.Key.String()] = value
 	}
 
 	return results, nil
@@ -165,7 +164,7 @@ func (b *BitwardenProvider) listItems() ([]bwItem, error) {
 	return items, nil
 }
 
-func (b *BitwardenProvider) extractValue(item config.SecretItem, bwItems []bwItem) (string, error) {
+func (b *BitwardenProvider) extractValue(item FetchItem, bwItems []bwItem) (string, error) {
 	var found *bwItem
 	for i := range bwItems {
 		if bwItems[i].Name == item.Item {

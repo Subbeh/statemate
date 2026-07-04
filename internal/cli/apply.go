@@ -98,24 +98,17 @@ func runApply(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	secretsCfg := resolveSecretsWithSources(cfg, profileName, sourcePaths)
-	if len(secretsCfg.Providers) > 0 {
+	{
 		identitySource := ""
 		if cfg.Age != nil {
 			identitySource = cfg.Age.Identity
 		}
-		mgr, err := secrets.NewManager(secretsCfg, enc, identitySource)
-		if err != nil {
-			return fmt.Errorf("setting up secrets: %w", err)
-		}
-		secretsMap, err := mgr.LoadSecrets()
-		if err != nil {
-			pending := mgr.PendingCount()
-			if pending > 0 {
-				fmt.Fprintf(os.Stderr, "Warning: %d secrets not cached. Run 'mate secrets fetch' first.\n", pending)
+		mgr, err := secrets.NewManager(enc, identitySource, cfg.SecretsCache)
+		if err == nil {
+			tmplCtx.SecretLookup = func(item, typ, field string) (string, error) {
+				key := secrets.CacheKey{Provider: "bitwarden", Item: item, Type: typ, Field: field}
+				return mgr.Get(key)
 			}
-		} else {
-			tmplCtx.Secrets = secretsMap
 		}
 	}
 

@@ -10,17 +10,19 @@ import (
 	"github.com/subbeh/statemate/internal/profile"
 )
 
+type SecretLookup func(item, typ, field string) (string, error)
+
 type Context struct {
-	Profile   string
-	Hostname  string
-	OS        string
-	Arch      string
-	HomeDir   string
-	Username  string
-	SourceDir string
-	Vars      map[string]any
-	Secrets   map[string]any
-	Env       map[string]string
+	Profile      string
+	Hostname     string
+	OS           string
+	Arch         string
+	HomeDir      string
+	Username     string
+	SourceDir    string
+	Vars         map[string]any
+	Env          map[string]string
+	SecretLookup SecretLookup
 }
 
 func NewContext(cfg *config.Config, profileName string) (*Context, error) {
@@ -40,7 +42,6 @@ func NewContext(cfg *config.Config, profileName string) (*Context, error) {
 		Username:  username,
 		SourceDir: cfg.SourceDir(),
 		Vars:      make(map[string]any),
-		Secrets:   make(map[string]any),
 		Env:       make(map[string]string),
 	}
 

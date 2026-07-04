@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/subbeh/statemate/internal/config"
@@ -88,6 +89,21 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("computing changes: %w", err)
 	}
 
+	var filterPath string
+	if len(args) > 0 {
+		filterPath = args[0]
+	}
+
+	if filterPath != "" {
+		var filtered []*target.Change
+		for _, c := range changes {
+			if matchesPath(c.Entry, filterPath, cfg.SourceDir()) {
+				filtered = append(filtered, c)
+			}
+		}
+		changes = filtered
+	}
+
 	if len(changes) == 0 {
 		fmt.Println("No changes")
 		return nil
@@ -98,16 +114,16 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating template context: %w", err)
 	}
 
-	secretsCfg := resolveSecretsWithSources(cfg, profileName, sourcePaths)
-	if len(secretsCfg.Providers) > 0 {
+	{
 		identitySource := ""
 		if cfg.Age != nil {
 			identitySource = cfg.Age.Identity
 		}
-		mgr, err := secrets.NewManager(secretsCfg, enc, identitySource)
+		mgr, err := secrets.NewManager(enc, identitySource, cfg.SecretsCache)
 		if err == nil {
-			if secretsMap, err := mgr.LoadSecrets(); err == nil {
-				tmplCtx.Secrets = secretsMap
+			tmplCtx.SecretLookup = func(item, typ, field string) (string, error) {
+				key := secrets.CacheKey{Provider: "bitwarden", Item: item, Type: typ, Field: field}
+				return mgr.Get(key)
 			}
 		}
 	}
@@ -128,12 +144,14 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		} else {
 			diff, err = target.GenerateDiff(change.Entry.SourcePath, change.Entry.TargetPath)
 		}
-		if err != nil {
-			return fmt.Errorf("generating diff for %s: %w", util.ShortenPath(change.Entry.TargetPath), err)
-		}
-
 		fmt.Printf("=== %s ===\n", util.ShortenPath(change.Entry.TargetPath))
-		if diff != "" {
+		if err != nil {
+			if strings.Contains(err.Error(), "secret not cached") {
+				fmt.Fprintf(os.Stderr, "  (secrets not cached, run 'mate secrets fetch')\n")
+			} else {
+				return fmt.Errorf("generating diff for %s: %w", util.ShortenPath(change.Entry.TargetPath), err)
+			}
+		} else if diff != "" {
 			fmt.Println(target.ColorizeDiff(diff))
 		} else {
 			fmt.Println("(no content difference, state mismatch only)")

@@ -60,5 +60,17 @@ func funcMap(ctx *Context) template.FuncMap {
 			}
 			return string(decoded), nil
 		},
+		"bitwarden": func(item, typ, field string) (string, error) {
+			if ctx.SecretLookup == nil {
+				return "", fmt.Errorf("secrets not configured (run 'mate secrets fetch')")
+			}
+			return ctx.SecretLookup(item, typ, field)
+		},
+		"bitwardenAttachment": func(item, filename string) (string, error) {
+			if ctx.SecretLookup == nil {
+				return "", fmt.Errorf("secrets not configured (run 'mate secrets fetch')")
+			}
+			return ctx.SecretLookup(item, "attachment", filename)
+		},
 	}
 }

@@ -9,9 +9,19 @@ import (
 	"time"
 
 	"filippo.io/age"
-	"github.com/subbeh/statemate/internal/config"
 	"github.com/subbeh/statemate/internal/encrypt"
 )
+
+type CacheKey struct {
+	Provider string `json:"provider"`
+	Item     string `json:"item"`
+	Type     string `json:"type"`
+	Field    string `json:"field"`
+}
+
+func (k CacheKey) String() string {
+	return fmt.Sprintf("%s:%s:%s:%s", k.Provider, k.Item, k.Type, k.Field)
+}
 
 type CachedValue struct {
 	Value     string    `json:"value"`
@@ -19,20 +29,27 @@ type CachedValue struct {
 }
 
 type Cache struct {
-	FetchedAt time.Time               `json:"fetched_at"`
-	Items     map[string]*CachedValue `json:"items"`
+	FetchedAt time.Time                `json:"fetched_at"`
+	Items     map[string]*CachedValue  `json:"items"`
 }
 
 type Provider interface {
 	Name() string
 	Available() error
-	Fetch(items []config.SecretItem) (map[string]string, error)
+	Fetch(items []FetchItem) (map[string]string, error)
 }
 
-type ProgressFunc func(path string, changed bool)
+type FetchItem struct {
+	Key      CacheKey
+	Item     string
+	Type     string
+	Field    string
+	Filename string
+}
+
+type ProgressFunc func(key CacheKey, changed bool)
 
 type Manager struct {
-	cfg        *config.SecretsConfig
 	providers  map[string]Provider
 	enc        *encrypt.AgeEncryptor
 	identity   age.Identity
@@ -41,22 +58,20 @@ type Manager struct {
 	onProgress ProgressFunc
 }
 
-func NewManager(cfg *config.SecretsConfig, enc *encrypt.AgeEncryptor, identitySource string) (*Manager, error) {
+func NewManager(enc *encrypt.AgeEncryptor, identitySource string, cachePath string) (*Manager, error) {
 	m := &Manager{
-		cfg:       cfg,
 		providers: make(map[string]Provider),
 		enc:       enc,
 	}
 
-	m.cachePath = cfg.Cache
-	if m.cachePath == "" {
+	if cachePath != "" {
+		m.cachePath = expandPath(cachePath)
+	} else {
 		stateDir, err := defaultCacheDir()
 		if err != nil {
 			return nil, err
 		}
 		m.cachePath = filepath.Join(stateDir, "secrets.age")
-	} else {
-		m.cachePath = expandPath(m.cachePath)
 	}
 
 	if identitySource != "" {
@@ -70,7 +85,6 @@ func NewManager(cfg *config.SecretsConfig, enc *encrypt.AgeEncryptor, identitySo
 	}
 
 	m.providers["bitwarden"] = NewBitwardenProvider()
-	m.providers["command"] = NewCommandProvider()
 
 	return m, nil
 }
@@ -79,14 +93,20 @@ func (m *Manager) SetProgress(fn ProgressFunc) {
 	m.onProgress = fn
 }
 
-func (m *Manager) Fetch(pattern string) (*FetchResult, error) {
+func (m *Manager) Fetch(items []FetchItem) (*FetchResult, error) {
 	result := &FetchResult{}
 
 	if err := m.loadCache(); err != nil {
 		m.cache = &Cache{Items: make(map[string]*CachedValue)}
 	}
 
-	for providerName, provCfg := range m.cfg.Providers {
+	// Group items by provider
+	byProvider := make(map[string][]FetchItem)
+	for _, item := range items {
+		byProvider[item.Key.Provider] = append(byProvider[item.Key.Provider], item)
+	}
+
+	for providerName, provItems := range byProvider {
 		provider, ok := m.providers[providerName]
 		if !ok {
 			return nil, fmt.Errorf("unknown provider: %s", providerName)
@@ -96,32 +116,30 @@ func (m *Manager) Fetch(pattern string) (*FetchResult, error) {
 			return nil, fmt.Errorf("provider %s not available: %w", providerName, err)
 		}
 
-		items := filterItems(provCfg.Items, pattern)
-		if len(items) == 0 {
-			continue
-		}
-
-		values, err := provider.Fetch(items)
+		values, err := provider.Fetch(provItems)
 		if err != nil {
 			return nil, fmt.Errorf("fetching from %s: %w", providerName, err)
 		}
 
 		now := time.Now()
-		for path, value := range values {
-			old, exists := m.cache.Items[path]
+		for keyStr, value := range values {
+			old, exists := m.cache.Items[keyStr]
 			changed := !exists || old.Value != value
 			if changed {
 				result.Changed++
 			} else {
 				result.Unchanged++
 			}
-			m.cache.Items[path] = &CachedValue{
+			m.cache.Items[keyStr] = &CachedValue{
 				Value:     value,
 				FetchedAt: now,
 			}
 			result.Total++
+
 			if m.onProgress != nil {
-				m.onProgress(path, changed)
+				// Parse key back for progress reporting
+				key := parseCacheKeyString(keyStr)
+				m.onProgress(key, changed)
 			}
 		}
 	}
@@ -135,66 +153,24 @@ func (m *Manager) Fetch(pattern string) (*FetchResult, error) {
 	return result, nil
 }
 
-func (m *Manager) LoadSecrets() (map[string]any, error) {
+func (m *Manager) Get(key CacheKey) (string, error) {
 	if err := m.loadCache(); err != nil {
-		return nil, err
+		return "", fmt.Errorf("secrets cache not available: %w", err)
 	}
 
-	secrets := make(map[string]any)
-	for path, cached := range m.cache.Items {
-		setNestedValue(secrets, path, cached.Value)
+	cached, ok := m.cache.Items[key.String()]
+	if !ok {
+		return "", fmt.Errorf("secret not cached: %s (run 'mate secrets fetch')", key.String())
 	}
-	return secrets, nil
+	return cached.Value, nil
 }
 
-func (m *Manager) ListItems() ([]*ListEntry, error) {
+func (m *Manager) ListCached() map[string]*CachedValue {
 	_ = m.loadCache()
-
-	var entries []*ListEntry
-	for providerName, provCfg := range m.cfg.Providers {
-		for _, item := range provCfg.Items {
-			entry := &ListEntry{
-				Path:     item.Path,
-				Provider: providerName,
-				Status:   StatusMissing,
-			}
-			if m.cache != nil {
-				if cached, ok := m.cache.Items[item.Path]; ok {
-					entry.Status = StatusCached
-					entry.FetchedAt = cached.FetchedAt
-				}
-			}
-			entries = append(entries, entry)
-		}
+	if m.cache == nil {
+		return nil
 	}
-	return entries, nil
-}
-
-func (m *Manager) PendingCount() int {
-	_ = m.loadCache()
-
-	count := 0
-	for _, provCfg := range m.cfg.Providers {
-		for _, item := range provCfg.Items {
-			if m.cache == nil {
-				count++
-				continue
-			}
-			if _, ok := m.cache.Items[item.Path]; !ok {
-				count++
-			}
-		}
-	}
-	return count
-}
-
-func (m *Manager) HasSecrets() bool {
-	for _, provCfg := range m.cfg.Providers {
-		if len(provCfg.Items) > 0 {
-			return true
-		}
-	}
-	return false
+	return m.cache.Items
 }
 
 func (m *Manager) CachePath() string {
@@ -259,77 +235,17 @@ type FetchResult struct {
 	Unchanged int
 }
 
-type ListEntry struct {
-	Path      string
-	Provider  string
-	Status    ListStatus
-	FetchedAt time.Time
-}
-
-type ListStatus int
-
-const (
-	StatusCached  ListStatus = iota
-	StatusMissing
-	StatusNew
-)
-
-func (s ListStatus) String() string {
-	switch s {
-	case StatusCached:
-		return "cached"
-	case StatusMissing:
-		return "missing"
-	case StatusNew:
-		return "new"
-	default:
-		return "unknown"
+func parseCacheKeyString(s string) CacheKey {
+	parts := strings.SplitN(s, ":", 4)
+	if len(parts) != 4 {
+		return CacheKey{}
 	}
-}
-
-func setNestedValue(m map[string]any, path string, value any) {
-	parts := strings.Split(path, ".")
-	current := m
-	for i, part := range parts {
-		if i == len(parts)-1 {
-			current[part] = value
-		} else {
-			if next, ok := current[part]; ok {
-				if nextMap, ok := next.(map[string]any); ok {
-					current = nextMap
-				} else {
-					newMap := make(map[string]any)
-					current[part] = newMap
-					current = newMap
-				}
-			} else {
-				newMap := make(map[string]any)
-				current[part] = newMap
-				current = newMap
-			}
-		}
+	return CacheKey{
+		Provider: parts[0],
+		Item:     parts[1],
+		Type:     parts[2],
+		Field:    parts[3],
 	}
-}
-
-func filterItems(items []config.SecretItem, pattern string) []config.SecretItem {
-	if pattern == "" {
-		return items
-	}
-	var filtered []config.SecretItem
-	for _, item := range items {
-		if matchPattern(item.Path, pattern) {
-			filtered = append(filtered, item)
-		}
-	}
-	return filtered
-}
-
-func matchPattern(path, pattern string) bool {
-	if strings.HasSuffix(pattern, "*") {
-		prefix := strings.TrimSuffix(pattern, "*")
-		return strings.HasPrefix(path, prefix)
-	}
-	return path == pattern
 }
 
 func defaultCacheDir() (string, error) {

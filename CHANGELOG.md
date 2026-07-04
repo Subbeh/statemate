@@ -30,15 +30,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.SourceDir` template variable for accessing the dotfiles source directory
 - `required` template function to error on missing/empty values
 - `var_files` config option to load additional variable files (e.g., secrets)
-- Native secrets management with provider-based fetching (`mate secrets fetch/list/status`)
+- Inline secrets in templates via `{{ bitwarden "item" "type" "field" }}`
   - Bitwarden provider: supports fields, SSH keys, attachments, login credentials, TOTP
-  - Command provider: run arbitrary shell commands to fetch secrets
   - Age-encrypted disk cache (encrypted to local identity only)
-  - `.Secrets` template namespace with nested dot-path access
-  - Profile-level secrets (additive merge with global)
-  - Pattern-based selective fetch (e.g., `mate secrets fetch ssh.*`)
-  - `sN` indicator in `mate status --short` for pending secrets
-- `base64Decode` template function for decoding base64-encoded secrets
+  - `mate secrets fetch` scans templates, discovers references, fetches from provider
+  - `mate secrets list` and `mate secrets status` show cache state
+  - Pattern-based selective fetch (e.g., `mate secrets fetch "github*"`)
+  - `sN` indicator in `mate status --short` for uncached secrets
+- `base64Decode` template function for decoding base64 strings
 
 ### Changed
 - Empty sources list is now valid (allows orphan detection with no active sources)

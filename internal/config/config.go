@@ -17,7 +17,7 @@ type Config struct {
 	Packages      *PackageList        `yaml:"packages" toml:"packages"`
 	PackageFiles  []string            `yaml:"package_files" toml:"package_files"`
 	AURHelper     string              `yaml:"aur_helper" toml:"aur_helper"`
-	Secrets       *SecretsConfig      `yaml:"secrets" toml:"secrets"`
+	SecretsCache string `yaml:"secrets_cache" toml:"secrets_cache"`
 
 	sourceDir string
 }
@@ -87,7 +87,6 @@ type Profile struct {
 	Detection *Detection      `yaml:"detection" toml:"detection"`
 	Packages  *PackageList    `yaml:"packages" toml:"packages"`
 	Variables map[string]any  `yaml:"variables" toml:"variables"`
-	Secrets   *SecretsConfig  `yaml:"secrets" toml:"secrets"`
 }
 
 type Detection struct {
@@ -112,24 +111,6 @@ type PackageList struct {
 	AUR    []string `yaml:"aur" toml:"aur"`
 }
 
-type SecretsConfig struct {
-	Cache     string                       `yaml:"cache" toml:"cache"`
-	Providers map[string]*SecretsProvider  `yaml:"-" toml:"-"`
-}
-
-type SecretsProvider struct {
-	Items []SecretItem `yaml:"items" toml:"items"`
-}
-
-type SecretItem struct {
-	Path     string `yaml:"path" toml:"path"`
-	Item     string `yaml:"item" toml:"item"`
-	Type     string `yaml:"type" toml:"type"`
-	Field    string `yaml:"field" toml:"field"`
-	Filename string `yaml:"filename" toml:"filename"`
-	Cmd      string `yaml:"cmd" toml:"cmd"`
-}
-
 type DirConfig struct {
 	Profile  string            `yaml:"profile" toml:"profile"`
 	Targets  map[string]string `yaml:"targets" toml:"targets"`
@@ -138,7 +119,6 @@ type DirConfig struct {
 	Perm     string            `yaml:"perm" toml:"perm"`
 	Packages *PackageList      `yaml:"packages" toml:"packages"`
 	Scripts  *DirScripts       `yaml:"scripts" toml:"scripts"`
-	Secrets  *SecretsConfig    `yaml:"secrets" toml:"secrets"`
 }
 
 type DirScripts struct {
