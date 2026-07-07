@@ -23,7 +23,7 @@ func (p *PacmanManager) IsAvailable() bool {
 }
 
 func (p *PacmanManager) ListInstalled() ([]Package, error) {
-	cmd := exec.Command("pacman", "-Qe")
+	cmd := exec.Command("pacman", "-Qentt")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
@@ -48,6 +48,35 @@ func (p *PacmanManager) ListInstalled() ([]Package, error) {
 	}
 
 	return packages, scanner.Err()
+}
+
+func (p *PacmanManager) Describe(pkgs []string) (map[string]string, error) {
+	if len(pkgs) == 0 {
+		return nil, nil
+	}
+	args := append([]string{"-Qi"}, pkgs...)
+	cmd := exec.Command("pacman", args...)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]string)
+	var currentName string
+	scanner := bufio.NewScanner(&out)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "Name") {
+			currentName = strings.TrimSpace(strings.TrimPrefix(line, "Name            :"))
+		} else if strings.HasPrefix(line, "Description") {
+			desc := strings.TrimSpace(strings.TrimPrefix(line, "Description     :"))
+			if currentName != "" {
+				result[currentName] = desc
+			}
+		}
+	}
+	return result, scanner.Err()
 }
 
 func (p *PacmanManager) Install(pkgs []string) error {

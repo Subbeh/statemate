@@ -48,7 +48,7 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 
-	if err := cfg.loadPackageFiles(); err != nil {
+	if err := cfg.loadIncludes(); err != nil {
 		return nil, err
 	}
 
@@ -173,99 +173,6 @@ func findDirConfig(dir string) (string, error) {
 	return "", fmt.Errorf("no dir config found")
 }
 
-func (c *Config) loadPackageFiles() error {
-	// Collect all package files to load
-	var files []string
-
-	// Convention: .mate/packages.yaml (or .yml/.toml)
-	conventionPaths := []string{
-		filepath.Join(c.sourceDir, ".mate", "packages.yaml"),
-		filepath.Join(c.sourceDir, ".mate", "packages.yml"),
-		filepath.Join(c.sourceDir, ".mate", "packages.toml"),
-	}
-	for _, path := range conventionPaths {
-		if _, err := os.Stat(path); err == nil {
-			files = append(files, path)
-			break
-		}
-	}
-
-	// Explicit package_files
-	for _, f := range c.PackageFiles {
-		path := f
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(c.sourceDir, path)
-		}
-		path = expandHome(path)
-		files = append(files, path)
-	}
-
-	// Load and merge each file
-	for _, path := range files {
-		pkgs, err := loadPackageFile(path)
-		if err != nil {
-			return fmt.Errorf("loading package file %s: %w", path, err)
-		}
-		c.Packages = mergePackageLists(c.Packages, pkgs)
-	}
-
-	return nil
-}
-
-func loadPackageFile(path string) (*PackageList, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var pkgs PackageList
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".yaml", ".yml":
-		if err := yaml.Unmarshal(data, &pkgs); err != nil {
-			return nil, fmt.Errorf("parsing YAML: %w", err)
-		}
-	case ".toml":
-		if err := toml.Unmarshal(data, &pkgs); err != nil {
-			return nil, fmt.Errorf("parsing TOML: %w", err)
-		}
-	default:
-		return nil, fmt.Errorf("unsupported format: %s", filepath.Ext(path))
-	}
-
-	return &pkgs, nil
-}
-
-func mergePackageLists(base, add *PackageList) *PackageList {
-	if add == nil {
-		return base
-	}
-	if base == nil {
-		return add
-	}
-
-	result := &PackageList{
-		Common: appendUniqueStrings(base.Common, add.Common...),
-		Brew:   appendUniqueStrings(base.Brew, add.Brew...),
-		Pacman: appendUniqueStrings(base.Pacman, add.Pacman...),
-		AUR:    appendUniqueStrings(base.AUR, add.AUR...),
-	}
-	return result
-}
-
-func appendUniqueStrings(slice []string, items ...string) []string {
-	seen := make(map[string]bool)
-	for _, s := range slice {
-		seen[s] = true
-	}
-	result := slice
-	for _, item := range items {
-		if !seen[item] {
-			seen[item] = true
-			result = append(result, item)
-		}
-	}
-	return result
-}
 
 func (c *Config) setDefaults() error {
 	if c.TargetBase == "" {
@@ -296,4 +203,121 @@ func (c *Config) setDefaults() error {
 	}
 
 	return nil
+}
+
+func (c *Config) loadIncludes() error {
+	// Load top-level includes
+	for _, f := range c.Include {
+		partial, err := loadIncludeFile(c.resolveRelPath(f))
+		if err != nil {
+			return fmt.Errorf("loading include %s: %w", f, err)
+		}
+		c.mergePartial(partial)
+	}
+
+	// Load profile-level includes
+	for _, profile := range c.Profiles {
+		if profile == nil || len(profile.Include) == 0 {
+			continue
+		}
+		for _, f := range profile.Include {
+			partial, err := loadIncludeFile(c.resolveRelPath(f))
+			if err != nil {
+				return fmt.Errorf("loading include %s: %w", f, err)
+			}
+			profile.mergePartial(partial)
+		}
+	}
+
+	return nil
+}
+
+type includeFile struct {
+	Packages  *PackageList   `yaml:"packages" toml:"packages"`
+	Variables map[string]any `yaml:"variables" toml:"variables"`
+}
+
+func loadIncludeFile(path string) (*includeFile, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var inc includeFile
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".yaml", ".yml":
+		if err := yaml.Unmarshal(data, &inc); err != nil {
+			return nil, fmt.Errorf("parsing YAML: %w", err)
+		}
+	case ".toml":
+		if err := toml.Unmarshal(data, &inc); err != nil {
+			return nil, fmt.Errorf("parsing TOML: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported format: %s", filepath.Ext(path))
+	}
+
+	return &inc, nil
+}
+
+func (c *Config) mergePartial(inc *includeFile) {
+	c.Packages = mergePackageLists(c.Packages, inc.Packages)
+	c.Variables = mergeVariables(c.Variables, inc.Variables)
+}
+
+func (p *Profile) mergePartial(inc *includeFile) {
+	p.Packages = mergePackageLists(p.Packages, inc.Packages)
+	p.Variables = mergeVariables(p.Variables, inc.Variables)
+}
+
+func (c *Config) resolveRelPath(path string) string {
+	path = expandHome(path)
+	if !filepath.IsAbs(path) {
+		return filepath.Join(c.sourceDir, path)
+	}
+	return path
+}
+
+func mergePackageLists(base, add *PackageList) *PackageList {
+	if add == nil {
+		return base
+	}
+	if base == nil {
+		return add
+	}
+
+	return &PackageList{
+		Common: appendUniqueStrings(base.Common, add.Common...),
+		Brew:   appendUniqueStrings(base.Brew, add.Brew...),
+		Pacman: appendUniqueStrings(base.Pacman, add.Pacman...),
+		AUR:    appendUniqueStrings(base.AUR, add.AUR...),
+	}
+}
+
+func mergeVariables(base, add map[string]any) map[string]any {
+	if add == nil {
+		return base
+	}
+	if base == nil {
+		return add
+	}
+	for k, v := range add {
+		base[k] = v
+	}
+	return base
+}
+
+func appendUniqueStrings(slice []string, items ...string) []string {
+	seen := make(map[string]bool)
+	for _, s := range slice {
+		seen[s] = true
+	}
+	result := slice
+	for _, item := range items {
+		if !seen[item] {
+			seen[item] = true
+			result = append(result, item)
+		}
+	}
+	return result
 }

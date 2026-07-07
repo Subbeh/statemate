@@ -14,10 +14,10 @@ type Config struct {
 	Variables     map[string]any      `yaml:"variables" toml:"variables"`
 	VarFiles      []string            `yaml:"var_files" toml:"var_files"`
 	VarCmds       map[string]string   `yaml:"variable_commands" toml:"variable_commands"`
-	Packages      *PackageList        `yaml:"packages" toml:"packages"`
-	PackageFiles  []string            `yaml:"package_files" toml:"package_files"`
-	AURHelper     string              `yaml:"aur_helper" toml:"aur_helper"`
-	SecretsCache string `yaml:"secrets_cache" toml:"secrets_cache"`
+	Packages     *PackageList `yaml:"packages" toml:"packages"`
+	Include      []string     `yaml:"include" toml:"include"`
+	AURHelper    string       `yaml:"aur_helper" toml:"aur_helper"`
+	SecretsCache string       `yaml:"secrets_cache" toml:"secrets_cache"`
 
 	sourceDir string
 }
@@ -82,11 +82,12 @@ func (c *Config) ResolveSourcePaths(sources []string) []string {
 }
 
 type Profile struct {
-	Extends   string          `yaml:"extends" toml:"extends"`
-	Sources   []string        `yaml:"sources" toml:"sources"`
-	Detection *Detection      `yaml:"detection" toml:"detection"`
-	Packages  *PackageList    `yaml:"packages" toml:"packages"`
-	Variables map[string]any  `yaml:"variables" toml:"variables"`
+	Extends   string         `yaml:"extends" toml:"extends"`
+	Sources   []string       `yaml:"sources" toml:"sources"`
+	Detection *Detection     `yaml:"detection" toml:"detection"`
+	Packages  *PackageList   `yaml:"packages" toml:"packages"`
+	Include   []string       `yaml:"include" toml:"include"`
+	Variables map[string]any `yaml:"variables" toml:"variables"`
 }
 
 type Detection struct {

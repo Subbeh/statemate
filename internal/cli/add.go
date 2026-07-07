@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/subbeh/statemate/internal/config"
 	"github.com/subbeh/statemate/internal/encrypt"
+	"github.com/subbeh/statemate/internal/profile"
 	"github.com/subbeh/statemate/internal/source"
 )
 
@@ -54,7 +55,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	absSources := cfg.AbsoluteSources()
+	profileName := profile.Detect(cfg)
+	sources := profile.ResolveSources(cfg, profileName)
+	absSources := cfg.ResolveSourcePaths(sources)
 	if len(absSources) == 0 {
 		return fmt.Errorf("no sources configured")
 	}

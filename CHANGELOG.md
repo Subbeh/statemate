@@ -38,6 +38,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Pattern-based selective fetch (e.g., `mate secrets fetch "github*"`)
   - `sN` indicator in `mate status --short` for uncached secrets
 - `base64Decode` template function for decoding base64 strings
+- `include` config field to include partial config files (packages, variables)
+  - Works at top-level and within profiles
+  - Included files use same structure: `packages:`, `variables:`
+- `mate packages status --verbose` flag to show package descriptions
+- `mate packages status` now shows package sources in tabular format
+- GitHub Actions release workflow with goreleaser
+- `latest` release with stable download URLs for install scripts
 
 ### Changed
 - Empty sources list is now valid (allows orphan detection with no active sources)
@@ -69,9 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `mate packages apply --prune` flag to remove packages not in config (with warning)
 - `aur_helper` config option to specify AUR helper (default: yay, supports paru etc.)
 - `common` package list for cross-platform packages (installed via brew or pacman)
-- Package files can be split out to `.mate/packages.yaml` (auto-loaded if present)
-- `package_files` config option to specify additional package files
-- Source directories can define packages in `.mate/packages.yaml` (e.g., `./hyprland/.mate/packages.yaml`)
+- Source directories can define packages in `.mate.yaml` (e.g., `./hyprland/.mate.yaml`)
 - Cross-platform builds (macOS arm64, Linux amd64) via `make build-all`
 
 ### Changed
@@ -81,6 +86,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `mate packages status` message clarifies "No packages configured" vs "No package managers available"
 - Config and template context reloaded after before scripts run (allows scripts to generate var_files)
 - `var_files` paths resolved relative to source directory (not working directory)
+- `pacman` package list now uses `-Qentt` (native, explicit, unrequired) to exclude AUR and base packages
+- `aur` package list now uses `-Qmtt` and filters out `-debug` packages
+- `mate add` now uses profile-resolved sources (includes inherited profile sources)
 
 ### Fixed
 - `mate status` and `mate apply` no longer error when target file is missing

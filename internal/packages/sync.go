@@ -1,47 +1,143 @@
 package packages
 
 import (
-	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
-	"github.com/BurntSushi/toml"
 	"github.com/subbeh/statemate/internal/config"
-	"gopkg.in/yaml.v3"
 )
 
 type SyncResult struct {
 	Manager  string
-	Missing  []string
-	Extra    []string
 	Statuses []PackageStatus
 }
 
-func ComputeSync(cfg *config.Config, profileName string, sources []string) ([]SyncResult, error) {
-	wanted := collectPackages(cfg, profileName)
+type syncOptions struct {
+	verbose bool
+}
 
-	// Merge packages from source directories
-	sourcePackages := CollectFromSources(sources)
-	for manager, pkgs := range sourcePackages {
-		for _, pkg := range pkgs {
-			wanted[manager] = appendUnique(wanted[manager], pkg)
+type SyncOption func(*syncOptions)
+
+func WithVerbose(v bool) SyncOption {
+	return func(o *syncOptions) { o.verbose = v }
+}
+
+func (r *SyncResult) Missing() []string {
+	var result []string
+	for _, s := range r.Statuses {
+		if s.Status == StatusMissing {
+			result = append(result, s.Name)
+		}
+	}
+	return result
+}
+
+func (r *SyncResult) Extra() []string {
+	var result []string
+	for _, s := range r.Statuses {
+		if s.Status == StatusExtra {
+			result = append(result, s.Name)
+		}
+	}
+	return result
+}
+
+func ComputeSync(cfg *config.Config, profileName string, sources []string, opts ...SyncOption) ([]SyncResult, error) {
+	var o syncOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+
+	// Collect packages with source tracking
+	// key: "manager:pkgspec", value: list of sources
+	type pkgEntry struct {
+		manager string
+		spec    string
+		sources []string
+	}
+	entries := make(map[string]*pkgEntry) // key: "manager\x00name"
+
+	addPkgs := func(pkgs *config.PackageList, source string) {
+		if pkgs == nil {
+			return
+		}
+		add := func(manager string, specs []string) {
+			for _, spec := range specs {
+				name, _ := ParsePackageSpec(spec)
+				key := manager + "\x00" + name
+				if e, ok := entries[key]; ok {
+					e.sources = appendUnique(e.sources, source)
+				} else {
+					entries[key] = &pkgEntry{manager: manager, spec: spec, sources: []string{source}}
+				}
+			}
+		}
+		add("common", pkgs.Common)
+		add("brew", pkgs.Brew)
+		add("pacman", pkgs.Pacman)
+		add("aur", pkgs.AUR)
+	}
+
+	// Global packages
+	if cfg.Packages != nil {
+		addPkgs(cfg.Packages, "config")
+	}
+
+	// Profile-specific packages
+	if profileName != "" {
+		if profile, ok := cfg.Profiles[profileName]; ok {
+			if profile.Packages != nil {
+				addPkgs(profile.Packages, "profile:"+profileName)
+			}
+		}
+	}
+
+	// Source directory packages
+	for _, source := range sources {
+		dirCfg, _ := config.LoadDirConfig(source)
+		if dirCfg != nil && dirCfg.Packages != nil {
+			addPkgs(dirCfg.Packages, filepath.Base(source))
 		}
 	}
 
 	// Resolve common packages to the primary available manager
-	if commonPkgs, ok := wanted["common"]; ok && len(commonPkgs) > 0 {
-		primaryManager := getPrimaryManager(cfg.AURHelper)
-		if primaryManager != "" {
-			for _, pkg := range commonPkgs {
-				wanted[primaryManager] = appendUnique(wanted[primaryManager], pkg)
-			}
+	primaryManager := getPrimaryManager(cfg.AURHelper)
+	for key, e := range entries {
+		if e.manager != "common" {
+			continue
 		}
-		delete(wanted, "common")
+		if primaryManager == "" {
+			continue
+		}
+		name, _ := ParsePackageSpec(e.spec)
+		targetKey := primaryManager + "\x00" + name
+		if existing, ok := entries[targetKey]; ok {
+			for _, s := range e.sources {
+				existing.sources = appendUnique(existing.sources, s)
+			}
+		} else {
+			entries[targetKey] = &pkgEntry{manager: primaryManager, spec: e.spec, sources: e.sources}
+		}
+		delete(entries, key)
+	}
+
+	// Group by manager
+	managerPkgs := make(map[string][]*pkgEntry)
+	for _, e := range entries {
+		managerPkgs[e.manager] = append(managerPkgs[e.manager], e)
+	}
+
+	// Ensure all available managers are included
+	for _, m := range GetAvailableManagersWithHelper(cfg.AURHelper) {
+		if _, ok := managerPkgs[m.Name()]; !ok {
+			managerPkgs[m.Name()] = nil
+		}
 	}
 
 	var results []SyncResult
 
-	for managerName, wantedPkgs := range wanted {
+	for managerName, pkgs := range managerPkgs {
 		manager, err := GetManager(managerName, cfg.AURHelper)
 		if err != nil {
 			continue
@@ -60,39 +156,40 @@ func ComputeSync(cfg *config.Config, profileName string, sources []string) ([]Sy
 			installedMap[p.Name] = p
 		}
 
-		wantedMap := make(map[string]string)
-		for _, spec := range wantedPkgs {
-			name, version := ParsePackageSpec(spec)
-			wantedMap[name] = version
+		wantedMap := make(map[string]*pkgEntry)
+		for _, e := range pkgs {
+			name, _ := ParsePackageSpec(e.spec)
+			wantedMap[name] = e
 		}
 
 		result := SyncResult{Manager: managerName}
 
-		for name, wantedVersion := range wantedMap {
+		for name, e := range wantedMap {
+			_, version := ParsePackageSpec(e.spec)
 			if inst, ok := installedMap[name]; ok {
 				status := PackageStatus{
 					Name:      name,
-					Version:   wantedVersion,
+					Version:   version,
 					Status:    StatusInstalled,
 					Installed: inst.Version,
+					Sources:   e.sources,
 				}
-				if wantedVersion != "" && inst.Version != "" && inst.Version != wantedVersion {
+				if version != "" && inst.Version != "" && inst.Version != version {
 					status.Status = StatusVersionMismatch
 				}
 				result.Statuses = append(result.Statuses, status)
 			} else {
-				result.Missing = append(result.Missing, name)
 				result.Statuses = append(result.Statuses, PackageStatus{
 					Name:    name,
-					Version: wantedVersion,
+					Version: version,
 					Status:  StatusMissing,
+					Sources: e.sources,
 				})
 			}
 		}
 
 		for name, inst := range installedMap {
 			if _, ok := wantedMap[name]; !ok {
-				result.Extra = append(result.Extra, name)
 				result.Statuses = append(result.Statuses, PackageStatus{
 					Name:      name,
 					Status:    StatusExtra,
@@ -101,98 +198,40 @@ func ComputeSync(cfg *config.Config, profileName string, sources []string) ([]Sy
 			}
 		}
 
+		if o.verbose {
+			var names []string
+			for i := range result.Statuses {
+				names = append(names, result.Statuses[i].Name)
+			}
+			if descs, err := manager.Describe(names); err == nil {
+				for i := range result.Statuses {
+					result.Statuses[i].Description = descs[result.Statuses[i].Name]
+				}
+			}
+		}
+
+		sort.Slice(result.Statuses, func(i, j int) bool {
+			iExtra := result.Statuses[i].Status == StatusExtra
+			jExtra := result.Statuses[j].Status == StatusExtra
+			if iExtra != jExtra {
+				return !iExtra
+			}
+			si := strings.Join(result.Statuses[i].Sources, ",")
+			sj := strings.Join(result.Statuses[j].Sources, ",")
+			if si != sj {
+				return si < sj
+			}
+			return result.Statuses[i].Name < result.Statuses[j].Name
+		})
+
 		results = append(results, result)
 	}
 
 	return results, nil
 }
 
-func collectPackages(cfg *config.Config, profileName string) map[string][]string {
-	result := make(map[string][]string)
-
-	// Global packages from main config
-	if cfg.Packages != nil {
-		appendPackages(result, cfg.Packages)
-	}
-
-	// Profile-specific packages
-	if profileName != "" {
-		if profile, ok := cfg.Profiles[profileName]; ok {
-			if profile.Packages != nil {
-				appendPackages(result, profile.Packages)
-			}
-		}
-	}
-
-	return result
-}
-
-// CollectFromSources scans source directories for .mate/packages.yaml files
-func CollectFromSources(sources []string) map[string][]string {
-	result := make(map[string][]string)
-
-	for _, source := range sources {
-		pkgs := loadSourcePackages(source)
-		if pkgs != nil {
-			appendPackages(result, pkgs)
-		}
-	}
-
-	return result
-}
-
-func loadSourcePackages(sourceDir string) *config.PackageList {
-	candidates := []string{
-		filepath.Join(sourceDir, ".mate", "packages.yaml"),
-		filepath.Join(sourceDir, ".mate", "packages.yml"),
-		filepath.Join(sourceDir, ".mate", "packages.toml"),
-	}
-
-	for _, path := range candidates {
-		data, err := os.ReadFile(path)
-		if err != nil {
-			continue
-		}
-
-		var pkgs config.PackageList
-		switch {
-		case strings.HasSuffix(path, ".yaml"), strings.HasSuffix(path, ".yml"):
-			if err := yaml.Unmarshal(data, &pkgs); err != nil {
-				continue
-			}
-		case strings.HasSuffix(path, ".toml"):
-			if err := toml.Unmarshal(data, &pkgs); err != nil {
-				continue
-			}
-		}
-		return &pkgs
-	}
-
-	return nil
-}
-
-func appendPackages(result map[string][]string, pkgs *config.PackageList) {
-	if pkgs == nil {
-		return
-	}
-
-	for _, p := range pkgs.Common {
-		result["common"] = appendUnique(result["common"], p)
-	}
-	for _, p := range pkgs.Brew {
-		result["brew"] = appendUnique(result["brew"], p)
-	}
-	for _, p := range pkgs.Pacman {
-		result["pacman"] = appendUnique(result["pacman"], p)
-	}
-	for _, p := range pkgs.AUR {
-		result["aur"] = appendUnique(result["aur"], p)
-	}
-}
-
 // getPrimaryManager returns the first available package manager for common packages
 func getPrimaryManager(aurHelper string) string {
-	// Check in order of preference: brew (macOS), pacman (Arch)
 	managers := []Manager{
 		NewBrewManager(),
 		NewPacmanManager(),

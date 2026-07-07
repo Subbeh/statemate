@@ -1,15 +1,15 @@
 version: 2
 
+project_name: statemate
+
 before:
   hooks:
     - go mod tidy
-    - go generate ./...
-    - make docs
 
 builds:
   - id: mate
-    main: ./cmd/mate
     binary: mate
+    main: ./cmd/mate
     env:
       - CGO_ENABLED=0
     goos:
@@ -19,34 +19,35 @@ builds:
       - amd64
       - arm64
     ldflags:
-      - -s -w
-      - -X main.version={{.Version}}
+      - -s -w -X main.version={{.Version}}
 
 archives:
   - id: default
-    format: tar.gz
+    formats:
+      - tar.gz
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
-      - README.md
-      - CHANGELOG.md
       - LICENSE*
-      - docs/man/*
+      - README*
 
 checksum:
-  name_template: 'checksums.txt'
-
-snapshot:
-  version_template: "{{ incpatch .Version }}-next"
+  name_template: "checksums.txt"
 
 changelog:
-  sort: asc
+  use: github
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
-      - '^ci:'
-      - Merge pull request
-      - Merge branch
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+
+release:
+  github:
+    owner: subbeh
+    name: statemate
+  prerelease: auto
+  name_template: "{{.ProjectName}} v{{.Version}}"
 
 brews:
   - repository:
@@ -54,25 +55,10 @@ brews:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: https://github.com/subbeh/statemate
-    description: Declarative system configuration management
-    license: MIT
+    homepage: "https://github.com/subbeh/statemate"
+    description: "Declarative system configuration management"
+    license: "MIT"
     install: |
       bin.install "mate"
     test: |
-      system "#{bin}/mate", "version"
-
-# TODO: Add AUR support when registration is available
-# aurs:
-#   - name: statemate-bin
-#     homepage: https://github.com/subbeh/statemate
-#     description: Declarative system configuration management
-#     maintainers:
-#       - "Steven Terwindt <steven@sbbh.cloud>"
-#     license: MIT
-#     private_key: "{{ .Env.AUR_SSH_PRIVATE_KEY }}"
-#     git_url: "ssh://aur@aur.archlinux.org/statemate-bin.git"
-#     package: |-
-#       install -Dm755 mate "${pkgdir}/usr/bin/mate"
-#       install -Dm644 README.md "${pkgdir}/usr/share/doc/statemate/README.md"
-#       install -Dm644 CHANGELOG.md "${pkgdir}/usr/share/doc/statemate/CHANGELOG.md"
+      system "#{bin}/mate", "--version"

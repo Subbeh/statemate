@@ -9,13 +9,15 @@ type Manager interface {
 	Name() string
 	IsAvailable() bool
 	ListInstalled() ([]Package, error)
+	Describe(pkgs []string) (map[string]string, error)
 	Install(pkgs []string) error
 	Uninstall(pkgs []string) error
 }
 
 type Package struct {
-	Name    string
-	Version string
+	Name        string
+	Version     string
+	Description string
 }
 
 func (p Package) String() string {
@@ -26,11 +28,12 @@ func (p Package) String() string {
 }
 
 type PackageStatus struct {
-	Name     string
-	Version  string
-	Status   Status
-	Source   string
-	Installed string
+	Name        string
+	Version     string
+	Status      Status
+	Sources     []string
+	Installed   string
+	Description string
 }
 
 type Status int

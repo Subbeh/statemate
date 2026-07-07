@@ -2,11 +2,14 @@ package cli
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/fatih/color"
+	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 	"github.com/spf13/cobra"
 	"github.com/subbeh/statemate/internal/config"
 	"github.com/subbeh/statemate/internal/packages"
@@ -22,8 +25,17 @@ var packagesCmd = &cobra.Command{
 var packagesStatusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show package sync status",
-	Long:  "Show which packages are missing. Use --all to also show extra packages not in config.",
-	RunE:  runPackagesStatus,
+	Long: `Show package sync status across configured package managers.
+
+Packages can be defined in:
+  - mate.yaml (global packages)
+  - mate.yaml profiles.<name>.packages (profile-specific)
+  - <source>/.mate.yaml packages (source-level)
+  - Files referenced via 'include' field
+
+Use --all to show extra packages not in config.
+Use --verbose to show package descriptions.`,
+	RunE: runPackagesStatus,
 }
 
 var packagesApplyCmd = &cobra.Command{
@@ -36,6 +48,7 @@ var packagesApplyCmd = &cobra.Command{
 var (
 	packagesAutoConfirm bool
 	packagesShowAll     bool
+	packagesVerbose     bool
 	packagesPrune       bool
 )
 
@@ -45,6 +58,7 @@ func init() {
 	packagesCmd.AddCommand(packagesApplyCmd)
 
 	packagesStatusCmd.Flags().BoolVar(&packagesShowAll, "all", false, "also show extra packages not in config")
+	packagesStatusCmd.Flags().BoolVarP(&packagesVerbose, "verbose", "v", false, "show package descriptions")
 	packagesApplyCmd.Flags().BoolVarP(&packagesAutoConfirm, "yes", "y", false, "auto-confirm all changes")
 	packagesApplyCmd.Flags().BoolVar(&packagesPrune, "prune", false, "remove packages not in config (dangerous)")
 }
@@ -62,7 +76,8 @@ func runPackagesStatus(cmd *cobra.Command, args []string) error {
 		profileName = profile.Detect(cfg)
 	}
 
-	results, err := packages.ComputeSync(cfg, profileName, cfg.AbsoluteSources())
+	sources := profile.ResolveSources(cfg, profileName)
+	results, err := packages.ComputeSync(cfg, profileName, cfg.ResolveSourcePaths(sources), packages.WithVerbose(packagesVerbose))
 	if err != nil {
 		return fmt.Errorf("computing sync: %w", err)
 	}
@@ -77,41 +92,65 @@ func runPackagesStatus(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	var data [][]string
 	for _, result := range results {
-		fmt.Printf("\n=== %s ===\n", result.Manager)
-
-		if len(result.Missing) > 0 {
-			fmt.Printf("Missing (%d):\n", len(result.Missing))
-			for _, p := range result.Missing {
-				fmt.Printf("  + %s\n", p)
-			}
-		}
-
-		if packagesShowAll && len(result.Extra) > 0 {
-			fmt.Printf("Extra (%d):\n", len(result.Extra))
-			for _, p := range result.Extra {
-				fmt.Printf("  - %s\n", p)
-			}
-		}
-
-		installed := 0
 		for _, s := range result.Statuses {
-			if s.Status == packages.StatusInstalled {
-				installed++
+			if s.Status == packages.StatusExtra && !packagesShowAll {
+				continue
 			}
-		}
-		if installed > 0 {
-			fmt.Printf("Installed: %d packages\n", installed)
-		}
 
-		if len(result.Missing) == 0 {
-			if packagesShowAll && len(result.Extra) > 0 {
-				fmt.Printf("(%d extra packages not in config)\n", len(result.Extra))
-			} else if !packagesShowAll && len(result.Extra) > 0 {
-				fmt.Printf("All configured packages installed (%d extra, use --all to show)\n", len(result.Extra))
-			} else {
-				fmt.Println("All packages in sync")
+			var indicator string
+			switch s.Status {
+			case packages.StatusInstalled:
+				indicator = color.GreenString("✓")
+			case packages.StatusMissing:
+				indicator = color.RedString("+")
+			case packages.StatusExtra:
+				indicator = color.YellowString("-")
+			case packages.StatusVersionMismatch:
+				indicator = color.YellowString("~")
 			}
+
+			source := strings.Join(s.Sources, ", ")
+			row := []string{indicator, s.Name, result.Manager, source}
+			if packagesVerbose {
+				row = append(row, s.Description)
+			}
+			data = append(data, row)
+		}
+	}
+
+	header := []string{"", "PACKAGE", "MANAGER", "SOURCE"}
+	alignment := tw.Alignment{tw.AlignCenter, tw.AlignLeft, tw.AlignLeft, tw.AlignLeft}
+	if packagesVerbose {
+		header = append(header, "DESCRIPTION")
+		alignment = append(alignment, tw.AlignLeft)
+	}
+
+	var buf bytes.Buffer
+	table := tablewriter.NewTable(&buf,
+		tablewriter.WithHeader(header),
+		tablewriter.WithAlignment(alignment),
+		tablewriter.WithRendition(tw.Rendition{
+			Borders: tw.BorderNone,
+			Settings: tw.Settings{
+				Separators: tw.SeparatorsNone,
+				Lines:      tw.LinesNone,
+			},
+		}),
+	)
+	table.Bulk(data)
+	table.Render()
+
+	scanner := bufio.NewScanner(&buf)
+	for scanner.Scan() {
+		fmt.Println(strings.TrimRight(scanner.Text(), " "))
+	}
+
+	for _, result := range results {
+		extra := result.Extra()
+		if !packagesShowAll && len(extra) > 0 {
+			fmt.Printf("(%d extra %s packages not in config, use --all to show)\n", len(extra), result.Manager)
 		}
 	}
 
@@ -131,7 +170,8 @@ func runPackagesApply(cmd *cobra.Command, args []string) error {
 		profileName = profile.Detect(cfg)
 	}
 
-	results, err := packages.ComputeSync(cfg, profileName, cfg.AbsoluteSources())
+	sources := profile.ResolveSources(cfg, profileName)
+	results, err := packages.ComputeSync(cfg, profileName, cfg.ResolveSourcePaths(sources))
 	if err != nil {
 		return fmt.Errorf("computing sync: %w", err)
 	}
@@ -148,7 +188,7 @@ func runPackagesApply(cmd *cobra.Command, args []string) error {
 
 	anyChanges := false
 	for _, result := range results {
-		if len(result.Missing) > 0 || (packagesPrune && len(result.Extra) > 0) {
+		if len(result.Missing()) > 0 || (packagesPrune && len(result.Extra()) > 0) {
 			anyChanges = true
 			break
 		}
@@ -160,8 +200,10 @@ func runPackagesApply(cmd *cobra.Command, args []string) error {
 	}
 
 	for _, result := range results {
-		hasMissing := len(result.Missing) > 0
-		hasExtra := packagesPrune && len(result.Extra) > 0
+		missing := result.Missing()
+		extra := result.Extra()
+		hasMissing := len(missing) > 0
+		hasExtra := packagesPrune && len(extra) > 0
 
 		if !hasMissing && !hasExtra {
 			continue
@@ -175,12 +217,12 @@ func runPackagesApply(cmd *cobra.Command, args []string) error {
 		fmt.Printf("\n=== %s ===\n", result.Manager)
 
 		if hasMissing {
-			fmt.Printf("Will install: %s\n", strings.Join(result.Missing, ", "))
+			fmt.Printf("Will install: %s\n", strings.Join(missing, ", "))
 		}
 
 		if hasExtra {
 			yellow := color.New(color.FgYellow).SprintFunc()
-			fmt.Printf("%s Will remove: %s\n", yellow("WARNING:"), strings.Join(result.Extra, ", "))
+			fmt.Printf("%s Will remove: %s\n", yellow("WARNING:"), strings.Join(extra, ", "))
 		}
 
 		if !packagesAutoConfirm {
@@ -202,15 +244,15 @@ func runPackagesApply(cmd *cobra.Command, args []string) error {
 		}
 
 		if hasMissing {
-			fmt.Printf("Installing %d packages...\n", len(result.Missing))
-			if err := manager.Install(result.Missing); err != nil {
+			fmt.Printf("Installing %d packages...\n", len(missing))
+			if err := manager.Install(missing); err != nil {
 				return fmt.Errorf("installing packages: %w", err)
 			}
 		}
 
 		if hasExtra {
-			fmt.Printf("Removing %d packages...\n", len(result.Extra))
-			if err := manager.Uninstall(result.Extra); err != nil {
+			fmt.Printf("Removing %d packages...\n", len(extra))
+			if err := manager.Uninstall(extra); err != nil {
 				return fmt.Errorf("removing packages: %w", err)
 			}
 		}
