@@ -19,6 +19,8 @@ import (
 	"github.com/subbeh/statemate/internal/util"
 )
 
+// Note: source import is still needed for source.Entry type
+
 var statusCmd = &cobra.Command{
 	Use:               "status [path]",
 	Short:             "Show files that would change on apply",
@@ -52,7 +54,10 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	sources := profile.ResolveSources(cfg, profileName)
 	sourcePaths := cfg.ResolveSourcePaths(sources)
 
-	scanner := source.NewScanner(cfg.TargetBase, cfg.SourceDir())
+	scanner, err := newScanner(cfg, profileName)
+	if err != nil {
+		return fmt.Errorf("creating scanner: %w", err)
+	}
 	tree, err := scanner.Scan(sourcePaths)
 	if err != nil {
 		return fmt.Errorf("scanning sources: %w", err)

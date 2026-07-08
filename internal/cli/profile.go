@@ -30,39 +30,48 @@ func runProfile(cmd *cobra.Command, args []string) error {
 
 	profileFlag, _ := cmd.Flags().GetString("profile")
 
+	var profileName string
+	var source string
+
 	if profileFlag != "" {
-		fmt.Printf("Profile: %s\n", profileFlag)
-		fmt.Println("Source:  --profile flag")
-		return nil
+		profileName = profileFlag
+		source = "--profile flag"
+	} else if envProfile := os.Getenv("STATEMATE_PROFILE"); envProfile != "" {
+		profileName = envProfile
+		source = "STATEMATE_PROFILE environment variable"
+	} else if cfg.Profile != "" {
+		profileName = cfg.Profile
+		source = "config file (profile field)"
+	} else {
+		profileName = profile.Detect(cfg)
+		if profileName != "" {
+			source = "auto-detected"
+		}
 	}
 
-	if envProfile := os.Getenv("STATEMATE_PROFILE"); envProfile != "" {
-		fmt.Printf("Profile: %s\n", envProfile)
-		fmt.Println("Source:  STATEMATE_PROFILE environment variable")
-		return nil
+	if profileName != "" {
+		fmt.Printf("Profile: %s\n", profileName)
+		fmt.Printf("Source:  %s\n", source)
+		if source == "auto-detected" {
+			printDetectionReason(cfg, profileName)
+		}
+	} else {
+		fmt.Println("Profile: (none)")
+		fmt.Println("Source:  no profile matched")
+
+		if len(cfg.Profiles) > 0 {
+			fmt.Println("\nConfigured profiles:")
+			for name := range cfg.Profiles {
+				fmt.Printf("  - %s\n", name)
+			}
+		}
 	}
 
-	if cfg.Profile != "" {
-		fmt.Printf("Profile: %s\n", cfg.Profile)
-		fmt.Println("Source:  config file (profile field)")
-		return nil
-	}
-
-	detected := profile.Detect(cfg)
-	if detected != "" {
-		fmt.Printf("Profile: %s\n", detected)
-		fmt.Println("Source:  auto-detected")
-		printDetectionReason(cfg, detected)
-		return nil
-	}
-
-	fmt.Println("Profile: (none)")
-	fmt.Println("Source:  no profile matched")
-
-	if len(cfg.Profiles) > 0 {
-		fmt.Println("\nConfigured profiles:")
-		for name := range cfg.Profiles {
-			fmt.Printf("  - %s\n", name)
+	sources := profile.ResolveSources(cfg, profileName)
+	if len(sources) > 0 {
+		fmt.Println("\nSources:")
+		for _, s := range sources {
+			fmt.Printf("  - %s\n", s)
 		}
 	}
 

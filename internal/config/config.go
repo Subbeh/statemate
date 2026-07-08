@@ -117,13 +117,14 @@ type PackageList struct {
 }
 
 type DirConfig struct {
-	Profile  string            `yaml:"profile" toml:"profile"`
-	Targets  map[string]string `yaml:"targets" toml:"targets"`
-	Owner    string            `yaml:"owner" toml:"owner"`
-	Group    string            `yaml:"group" toml:"group"`
-	Perm     string            `yaml:"perm" toml:"perm"`
-	Packages *PackageList      `yaml:"packages" toml:"packages"`
-	Scripts  *DirScripts       `yaml:"scripts" toml:"scripts"`
+	TargetBase string            `yaml:"target_base" toml:"target_base"`
+	Profile    string            `yaml:"profile" toml:"profile"`
+	Targets    map[string]string `yaml:"targets" toml:"targets"`
+	Owner      string            `yaml:"owner" toml:"owner"`
+	Group      string            `yaml:"group" toml:"group"`
+	Perm       string            `yaml:"perm" toml:"perm"`
+	Packages   *PackageList      `yaml:"packages" toml:"packages"`
+	Scripts    *DirScripts       `yaml:"scripts" toml:"scripts"`
 }
 
 type DirScripts struct {

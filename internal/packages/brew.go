@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -100,8 +101,8 @@ func (b *BrewManager) Install(pkgs []string) error {
 	}
 	args := append([]string{"install"}, pkgs...)
 	cmd := exec.Command("brew", args...)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 
@@ -111,7 +112,7 @@ func (b *BrewManager) Uninstall(pkgs []string) error {
 	}
 	args := append([]string{"uninstall"}, pkgs...)
 	cmd := exec.Command("brew", args...)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }

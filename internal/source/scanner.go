@@ -12,18 +12,24 @@ import (
 )
 
 type Scanner struct {
-	targetBase  string
-	repoRoot    string
-	dirConfigs  map[string]*config.DirConfig
-	ignoreFiles map[string]*gitignore.GitIgnore
+	targetBase       string
+	repoRoot         string
+	dirConfigs       map[string]*config.DirConfig
+	ignoreFiles      map[string]*gitignore.GitIgnore
+	templateRenderer config.TemplateRenderer
 }
 
 func NewScanner(targetBase, repoRoot string) *Scanner {
+	return NewScannerWithRenderer(targetBase, repoRoot, nil)
+}
+
+func NewScannerWithRenderer(targetBase, repoRoot string, renderer config.TemplateRenderer) *Scanner {
 	s := &Scanner{
-		targetBase:  targetBase,
-		repoRoot:    repoRoot,
-		dirConfigs:  make(map[string]*config.DirConfig),
-		ignoreFiles: make(map[string]*gitignore.GitIgnore),
+		targetBase:       targetBase,
+		repoRoot:         repoRoot,
+		dirConfigs:       make(map[string]*config.DirConfig),
+		ignoreFiles:      make(map[string]*gitignore.GitIgnore),
+		templateRenderer: renderer,
 	}
 	if repoRoot != "" {
 		s.loadIgnoreFile(repoRoot, repoRoot)
@@ -45,7 +51,7 @@ func (s *Scanner) Scan(sources []string) (*Tree, error) {
 }
 
 func (s *Scanner) scanSource(sourceDir string, tree *Tree) error {
-	dirCfg, _ := config.LoadDirConfig(sourceDir)
+	dirCfg, _ := config.LoadDirConfigRaw(sourceDir, s.templateRenderer)
 	if dirCfg != nil {
 		s.dirConfigs[sourceDir] = dirCfg
 	}
@@ -147,15 +153,31 @@ func (s *Scanner) resolveTarget(relPath, name string, dirCfg *config.DirConfig) 
 	}
 
 	targetBase := s.targetBase
-	if dirCfg != nil && len(cleanParts) > 0 {
-		firstDir := cleanParts[0]
-		if override, ok := dirCfg.Targets[firstDir]; ok {
-			targetBase = override
-			cleanParts = cleanParts[1:]
+	if dirCfg != nil {
+		if dirCfg.TargetBase != "" {
+			targetBase = expandHome(dirCfg.TargetBase)
+		} else if len(cleanParts) > 0 {
+			firstDir := cleanParts[0]
+			if override, ok := dirCfg.Targets[firstDir]; ok {
+				targetBase = override
+				cleanParts = cleanParts[1:]
+			}
 		}
 	}
 
 	return filepath.Join(targetBase, filepath.Join(cleanParts...))
+}
+
+func expandHome(path string) string {
+	if path == "~" {
+		home, _ := os.UserHomeDir()
+		return home
+	}
+	if strings.HasPrefix(path, "~/") {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, path[2:])
+	}
+	return path
 }
 
 func (s *Scanner) getParentAttrs(relDir string) Attrs {
@@ -187,7 +209,7 @@ func (s *Scanner) shouldSkip(name string) bool {
 	return false
 }
 
-func (s *Scanner) loadIgnoreFile(sourceDir, dir string) {
+func (s *Scanner) loadIgnoreFile(_, dir string) {
 	ignorePath := filepath.Join(dir, ".mateignore")
 	if _, err := os.Stat(ignorePath); err != nil {
 		return

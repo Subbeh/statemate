@@ -9,7 +9,6 @@ import (
 	"github.com/subbeh/statemate/internal/config"
 	"github.com/subbeh/statemate/internal/profile"
 	"github.com/subbeh/statemate/internal/scripts"
-	"github.com/subbeh/statemate/internal/source"
 	"github.com/subbeh/statemate/internal/state"
 )
 
@@ -59,15 +58,26 @@ func completeManagedFiles(cmd *cobra.Command, args []string, toComplete string) 
 	sources := profile.ResolveSources(cfg, profileName)
 	sourcePaths := cfg.ResolveSourcePaths(sources)
 
-	scanner := source.NewScanner(cfg.TargetBase, cfg.SourceDir())
+	scanner, err := newScanner(cfg, profileName)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
 	tree, err := scanner.Scan(sourcePaths)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError
 	}
 
+	cwd, _ := os.Getwd()
+
 	var completions []string
 	for _, e := range tree.Files() {
-		completions = append(completions, e.TargetPath)
+		// Include if current dir is under target path, source path, or vice versa
+		if strings.HasPrefix(e.TargetPath, cwd+"/") ||
+			strings.HasPrefix(cwd, filepath.Dir(e.TargetPath)) ||
+			strings.HasPrefix(e.SourcePath, cwd+"/") ||
+			strings.HasPrefix(cwd, filepath.Dir(e.SourcePath)) {
+			completions = append(completions, e.TargetPath)
+		}
 	}
 
 	return completions, cobra.ShellCompDirectiveNoFileComp
@@ -92,7 +102,10 @@ func completeSourceFiles(cmd *cobra.Command, args []string, toComplete string) (
 	sources := profile.ResolveSources(cfg, profileName)
 	sourcePaths := cfg.ResolveSourcePaths(sources)
 
-	scanner := source.NewScanner(cfg.TargetBase, cfg.SourceDir())
+	scanner, err := newScanner(cfg, profileName)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
 	tree, err := scanner.Scan(sourcePaths)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError
@@ -125,7 +138,10 @@ func completeEncryptedSourceFiles(cmd *cobra.Command, args []string, toComplete 
 	sources := profile.ResolveSources(cfg, profileName)
 	sourcePaths := cfg.ResolveSourcePaths(sources)
 
-	scanner := source.NewScanner(cfg.TargetBase, cfg.SourceDir())
+	scanner, err := newScanner(cfg, profileName)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
 	tree, err := scanner.Scan(sourcePaths)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError
@@ -160,7 +176,10 @@ func completeUnencryptedSourceFiles(cmd *cobra.Command, args []string, toComplet
 	sources := profile.ResolveSources(cfg, profileName)
 	sourcePaths := cfg.ResolveSourcePaths(sources)
 
-	scanner := source.NewScanner(cfg.TargetBase, cfg.SourceDir())
+	scanner, err := newScanner(cfg, profileName)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
 	tree, err := scanner.Scan(sourcePaths)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError
@@ -183,7 +202,13 @@ func completeSources(cmd *cobra.Command, args []string, toComplete string) ([]st
 		return nil, cobra.ShellCompDirectiveError
 	}
 
-	return cfg.Sources, cobra.ShellCompDirectiveNoFileComp
+	profileName, _ := cmd.Flags().GetString("profile")
+	if profileName == "" {
+		profileName = profile.Detect(cfg)
+	}
+
+	sources := profile.ResolveSources(cfg, profileName)
+	return sources, cobra.ShellCompDirectiveNoFileComp
 }
 
 func completeProfiles(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -241,7 +266,10 @@ func completeOrphanedFiles(cmd *cobra.Command, args []string, toComplete string)
 	sources := profile.ResolveSources(cfg, profileName)
 	sourcePaths := cfg.ResolveSourcePaths(sources)
 
-	scanner := source.NewScanner(cfg.TargetBase, cfg.SourceDir())
+	scanner, err := newScanner(cfg, profileName)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveError
+	}
 	tree, err := scanner.Scan(sourcePaths)
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError

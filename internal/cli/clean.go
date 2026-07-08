@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/subbeh/statemate/internal/config"
 	"github.com/subbeh/statemate/internal/profile"
-	"github.com/subbeh/statemate/internal/source"
 	"github.com/subbeh/statemate/internal/state"
 	"github.com/subbeh/statemate/internal/util"
 )
@@ -62,7 +61,10 @@ func runClean(cmd *cobra.Command, args []string) error {
 	sources := profile.ResolveSources(cfg, profileName)
 	sourcePaths := cfg.ResolveSourcePaths(sources)
 
-	scanner := source.NewScanner(cfg.TargetBase, cfg.SourceDir())
+	scanner, err := newScanner(cfg, profileName)
+	if err != nil {
+		return fmt.Errorf("creating scanner: %w", err)
+	}
 	tree, err := scanner.Scan(sourcePaths)
 	if err != nil {
 		return fmt.Errorf("scanning sources: %w", err)

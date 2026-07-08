@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Per-source `target_base` in `.mate.yaml` to deploy files to a different root directory
+- `.mate.yaml` files now support template rendering (use variables like `{{ .Vars.workspace }}`)
+- `mate add` prompts to create/update `.mate.yaml` when adding files outside home directory
+- `mate packages apply` now shows package manager output during install/uninstall
+
+### Changed
+- `mate profile` now shows the sources that apply to the active profile
+
 ## [0.1.0] - 2026-07-07
 
 Initial release.

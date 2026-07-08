@@ -54,7 +54,10 @@ func runManaged(cmd *cobra.Command, args []string) error {
 		activeSourceSet[s] = true
 	}
 
-	scanner := source.NewScanner(cfg.TargetBase, cfg.SourceDir())
+	scanner, err := newScanner(cfg, profileName)
+	if err != nil {
+		return fmt.Errorf("creating scanner: %w", err)
+	}
 	tree, err := scanner.Scan(allSourcePaths)
 	if err != nil {
 		return fmt.Errorf("scanning sources: %w", err)

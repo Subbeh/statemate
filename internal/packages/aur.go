@@ -3,6 +3,7 @@ package packages
 import (
 	"bufio"
 	"bytes"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -94,8 +95,9 @@ func (a *AURManager) Install(pkgs []string) error {
 	}
 	args := append([]string{"-S", "--noconfirm"}, pkgs...)
 	cmd := exec.Command(a.helper, args...)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
 	return cmd.Run()
 }
 
@@ -105,7 +107,8 @@ func (a *AURManager) Uninstall(pkgs []string) error {
 	}
 	args := append([]string{"-R", "--noconfirm"}, pkgs...)
 	cmd := exec.Command(a.helper, args...)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
 	return cmd.Run()
 }

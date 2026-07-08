@@ -9,9 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/subbeh/statemate/internal/config"
-	"github.com/subbeh/statemate/internal/util"
+	"github.com/subbeh/statemate/internal/profile"
 	"github.com/subbeh/statemate/internal/source"
 	"github.com/subbeh/statemate/internal/state"
+	"github.com/subbeh/statemate/internal/util"
 )
 
 var deleteCmd = &cobra.Command{
@@ -54,8 +55,19 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("resolving path: %w", err)
 	}
 
-	scanner := source.NewScanner(cfg.TargetBase, cfg.SourceDir())
-	tree, err := scanner.Scan(cfg.AbsoluteSources())
+	profileName, _ := cmd.Flags().GetString("profile")
+	if profileName == "" {
+		profileName = profile.Detect(cfg)
+	}
+
+	scanner, err := newScanner(cfg, profileName)
+	if err != nil {
+		return fmt.Errorf("creating scanner: %w", err)
+	}
+
+	sources := profile.ResolveSources(cfg, profileName)
+	sourcePaths := cfg.ResolveSourcePaths(sources)
+	tree, err := scanner.Scan(sourcePaths)
 	if err != nil {
 		return fmt.Errorf("scanning sources: %w", err)
 	}

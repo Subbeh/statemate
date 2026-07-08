@@ -136,6 +136,12 @@ func findConfigInDir(dir string) (string, error) {
 }
 
 func LoadDirConfig(dir string) (*DirConfig, error) {
+	return LoadDirConfigRaw(dir, nil)
+}
+
+type TemplateRenderer func([]byte) ([]byte, error)
+
+func LoadDirConfigRaw(dir string, render TemplateRenderer) (*DirConfig, error) {
 	path, err := findDirConfig(dir)
 	if err != nil {
 		return nil, nil
@@ -144,6 +150,13 @@ func LoadDirConfig(dir string) (*DirConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading dir config: %w", err)
+	}
+
+	if render != nil {
+		data, err = render(data)
+		if err != nil {
+			return nil, fmt.Errorf("rendering dir config template: %w", err)
+		}
 	}
 
 	cfg := &DirConfig{}
