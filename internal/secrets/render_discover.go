@@ -7,6 +7,7 @@ import (
 	"text/template"
 
 	tmpl "github.com/subbeh/statemate/internal/template"
+	"github.com/subbeh/statemate/internal/util"
 )
 
 // DiscoverByRendering renders templates and collects all bitwarden() calls made.
@@ -96,6 +97,7 @@ func discoveryFuncMap(ctx *tmpl.Context) template.FuncMap {
 		"bitwardenAttachment": func(item, filename string) (string, error) {
 			return ctx.SecretLookup(item, "attachment", filename)
 		},
+		"indent": util.IndentLines,
 		"contains":  strings.Contains,
 		"hasPrefix": strings.HasPrefix,
 		"hasSuffix": strings.HasSuffix,

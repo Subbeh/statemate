@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"text/template"
+
+	"github.com/subbeh/statemate/internal/util"
 )
 
 func Render(content []byte, ctx *Context) ([]byte, error) {
@@ -72,5 +74,6 @@ func funcMap(ctx *Context) template.FuncMap {
 			}
 			return ctx.SecretLookup(item, "attachment", filename)
 		},
+		"indent": util.IndentLines,
 	}
 }

@@ -12,6 +12,10 @@ type Entry struct {
 	Attrs      Attrs
 	IsDir      bool
 	Mode       os.FileMode
+
+	// Generated entries have no source file - content is provided directly
+	Generated        bool
+	GeneratedContent string
 }
 
 type Tree struct {

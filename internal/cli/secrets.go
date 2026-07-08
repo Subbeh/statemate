@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/fatih/color"
@@ -265,6 +266,16 @@ func discoverTemplateFiles(cfg *config.Config, sourcePaths []string) []string {
 		for _, e := range entries {
 			if strings.Contains(e.Name(), "#template") {
 				files = append(files, scriptsDir+"/"+e.Name())
+			}
+		}
+	}
+
+	// Scan .mate.yaml files in source directories for generate directives
+	for _, sourcePath := range sourcePaths {
+		for _, name := range []string{".mate.yaml", ".mate.yml"} {
+			path := filepath.Join(sourcePath, name)
+			if _, err := os.Stat(path); err == nil {
+				files = append(files, path)
 			}
 		}
 	}

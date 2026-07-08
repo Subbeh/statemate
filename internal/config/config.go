@@ -125,6 +125,14 @@ type DirConfig struct {
 	Perm       string            `yaml:"perm" toml:"perm"`
 	Packages   *PackageList      `yaml:"packages" toml:"packages"`
 	Scripts    *DirScripts       `yaml:"scripts" toml:"scripts"`
+	Generate   []GenerateConfig  `yaml:"generate" toml:"generate"`
+}
+
+type GenerateConfig struct {
+	Target  string `yaml:"target" toml:"target"`
+	Mode    string `yaml:"mode" toml:"mode"`
+	Content string `yaml:"content" toml:"content"`
+	Profile string `yaml:"profile" toml:"profile"`
 }
 
 type DirScripts struct {

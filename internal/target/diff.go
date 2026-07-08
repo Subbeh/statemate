@@ -38,9 +38,15 @@ func ComputeChanges(tree *source.Tree, db *state.DB) ([]*Change, error) {
 func computeChange(entry *source.Entry, db *state.DB) (*Change, error) {
 	change := &Change{Entry: entry}
 
-	sourceHash, err := state.HashFile(entry.SourcePath)
-	if err != nil {
-		return nil, err
+	var sourceHash string
+	var err error
+	if entry.Generated {
+		sourceHash = state.HashBytes([]byte(entry.GeneratedContent))
+	} else {
+		sourceHash, err = state.HashFile(entry.SourcePath)
+		if err != nil {
+			return nil, err
+		}
 	}
 	change.NewHash = sourceHash
 

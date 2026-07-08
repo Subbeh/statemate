@@ -56,6 +56,12 @@ func (s *Scanner) scanSource(sourceDir string, tree *Tree) error {
 		s.dirConfigs[sourceDir] = dirCfg
 	}
 
+	if dirCfg != nil && len(dirCfg.Generate) > 0 {
+		if err := s.processGenerateDirectives(sourceDir, dirCfg, tree); err != nil {
+			return err
+		}
+	}
+
 	return filepath.WalkDir(sourceDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -253,6 +259,52 @@ func (s *Scanner) isIgnored(sourceDir, relPath string, isDir bool) bool {
 	}
 
 	return false
+}
+
+func (s *Scanner) processGenerateDirectives(sourceDir string, dirCfg *config.DirConfig, tree *Tree) error {
+	for _, gen := range dirCfg.Generate {
+		targetPath := gen.Target
+		targetBase := s.targetBase
+		if dirCfg.TargetBase != "" {
+			targetBase = expandHome(dirCfg.TargetBase)
+		}
+		if !filepath.IsAbs(targetPath) {
+			targetPath = filepath.Join(targetBase, targetPath)
+		}
+
+		var perm uint32
+		if gen.Mode != "" {
+			if p, err := strconv.ParseUint(gen.Mode, 8, 32); err == nil {
+				perm = uint32(p)
+			}
+		}
+
+		entry := &Entry{
+			SourcePath:      sourceDir,
+			TargetPath:      targetPath,
+			RelPath:         strings.TrimPrefix(targetPath, s.targetBase+"/"),
+			Name:            filepath.Base(targetPath),
+			IsDir:           false,
+			Mode:            os.FileMode(0644),
+			Generated:       true,
+			GeneratedContent: gen.Content,
+			Attrs: Attrs{
+				Perm:    perm,
+				Profile: gen.Profile,
+			},
+		}
+
+		if dirCfg.Owner != "" {
+			entry.Attrs.Owner = dirCfg.Owner
+		}
+		if dirCfg.Group != "" {
+			entry.Attrs.Group = dirCfg.Group
+		}
+
+		tree.AddEntry(entry)
+	}
+
+	return nil
 }
 
 func (s *Scanner) DirConfig(sourceDir string) *config.DirConfig {

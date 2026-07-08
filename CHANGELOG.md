@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.mate.yaml` files now support template rendering (use variables like `{{ .Vars.workspace }}`)
 - `mate add` prompts to create/update `.mate.yaml` when adding files outside home directory
 - `mate packages apply` now shows package manager output during install/uninstall
+- `generate` directive in `.mate.yaml` to dynamically create files from templates
+- `indent` template function for proper YAML multiline content formatting
 
 ### Changed
 - `mate profile` now shows the sources that apply to the active profile

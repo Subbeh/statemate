@@ -153,9 +153,15 @@ func (a *Applier) Apply(tree *source.Tree) (*ApplyResult, error) {
 func (a *Applier) checkChange(entry *source.Entry) (*FileChange, error) {
 	change := &FileChange{Entry: entry}
 
-	sourceHash, err := state.HashFile(entry.SourcePath)
-	if err != nil {
-		return nil, err
+	var sourceHash string
+	var err error
+	if entry.Generated {
+		sourceHash = state.HashBytes(a.getGeneratedContent(entry))
+	} else {
+		sourceHash, err = state.HashFile(entry.SourcePath)
+		if err != nil {
+			return nil, err
+		}
 	}
 	change.NewHash = sourceHash
 
@@ -282,22 +288,26 @@ func (a *Applier) applyFile(entry *source.Entry, sourceHash string) error {
 	var content []byte
 	var err error
 
-	content, err = os.ReadFile(entry.SourcePath)
-	if err != nil {
-		return err
-	}
-
-	if entry.Attrs.Encrypted && a.enc != nil {
-		content, err = a.enc.Decrypt(content)
+	if entry.Generated {
+		content = a.getGeneratedContent(entry)
+	} else {
+		content, err = os.ReadFile(entry.SourcePath)
 		if err != nil {
-			return fmt.Errorf("decrypting: %w", err)
+			return err
 		}
-	}
 
-	if entry.Attrs.Template && a.tmplCtx != nil {
-		content, err = template.Render(content, a.tmplCtx)
-		if err != nil {
-			return fmt.Errorf("rendering template: %w", err)
+		if entry.Attrs.Encrypted && a.enc != nil {
+			content, err = a.enc.Decrypt(content)
+			if err != nil {
+				return fmt.Errorf("decrypting: %w", err)
+			}
+		}
+
+		if entry.Attrs.Template && a.tmplCtx != nil {
+			content, err = template.Render(content, a.tmplCtx)
+			if err != nil {
+				return fmt.Errorf("rendering template: %w", err)
+			}
 		}
 	}
 
@@ -500,6 +510,10 @@ func (a *Applier) importFile(entry *source.Entry) error {
 		AppliedHash: targetHash,
 		Mode:        entry.Mode.Perm(),
 	})
+}
+
+func (a *Applier) getGeneratedContent(entry *source.Entry) []byte {
+	return []byte(entry.GeneratedContent)
 }
 
 func (a *Applier) getRenderedHash(entry *source.Entry) (string, error) {
