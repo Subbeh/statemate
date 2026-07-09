@@ -75,6 +75,12 @@ func (b *BitwardenProvider) ensureUnlocked() error {
 func (b *BitwardenProvider) getStatus() (string, error) {
 	out, err := exec.Command("bw", "status").Output()
 	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr := strings.TrimSpace(string(exitErr.Stderr))
+			if stderr != "" {
+				return "", fmt.Errorf("%s", stderr)
+			}
+		}
 		return "", err
 	}
 
@@ -82,7 +88,7 @@ func (b *BitwardenProvider) getStatus() (string, error) {
 		Status string `json:"status"`
 	}
 	if err := json.Unmarshal(out, &status); err != nil {
-		return "", err
+		return "", fmt.Errorf("failed to parse bw status output: %s", strings.TrimSpace(string(out)))
 	}
 	return status.Status, nil
 }
@@ -117,10 +123,15 @@ func (b *BitwardenProvider) unlock() error {
 }
 
 func (b *BitwardenProvider) sync() error {
-	cmd := exec.Command("bw", "sync")
-	cmd.Stdout = nil
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	out, err := exec.Command("bw", "sync").CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return fmt.Errorf("%s", msg)
+		}
+		return err
+	}
+	return nil
 }
 
 type bwItem struct {
@@ -154,11 +165,25 @@ type bwSSHKey struct {
 func (b *BitwardenProvider) listItems() ([]bwItem, error) {
 	out, err := exec.Command("bw", "list", "items").Output()
 	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr := strings.TrimSpace(string(exitErr.Stderr))
+			if stderr != "" {
+				return nil, fmt.Errorf("%s", stderr)
+			}
+		}
 		return nil, err
+	}
+
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed == "" {
+		return nil, fmt.Errorf("vault is locked or session is invalid. Run: bw unlock")
 	}
 
 	var items []bwItem
 	if err := json.Unmarshal(out, &items); err != nil {
+		if !strings.HasPrefix(trimmed, "[") {
+			return nil, fmt.Errorf("vault is locked or session is invalid. Run: bw unlock")
+		}
 		return nil, err
 	}
 	return items, nil

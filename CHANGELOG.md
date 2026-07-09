@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Bitwarden provider now shows clear error messages when vault is locked or session is invalid instead of "unexpected end of JSON input"
+
 ### Added
 - Per-source `target_base` in `.mate.yaml` to deploy files to a different root directory
 - `.mate.yaml` files now support template rendering (use variables like `{{ .Vars.workspace }}`)
