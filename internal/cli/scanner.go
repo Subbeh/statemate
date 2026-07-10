@@ -9,14 +9,18 @@ import (
 )
 
 func newScanner(cfg *config.Config, profileName string) (*source.Scanner, error) {
-	tmplCtx, err := template.NewContext(cfg, profileName)
-	if err != nil {
-		return nil, err
-	}
-
 	var enc *encrypt.AgeEncryptor
 	if cfg.Age != nil {
 		enc, _ = encrypt.NewAgeEncryptor(cfg.Age.Identity, cfg.Age.IdentityCommand, cfg.Age.Recipients)
+	}
+
+	var ctxOpts []template.ContextOption
+	if enc != nil && enc.CanDecrypt() {
+		ctxOpts = append(ctxOpts, template.WithDecrypt(enc.Decrypt))
+	}
+	tmplCtx, err := template.NewContext(cfg, profileName, ctxOpts...)
+	if err != nil {
+		return nil, err
 	}
 
 	identitySource := ""

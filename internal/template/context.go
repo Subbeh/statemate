@@ -1,6 +1,7 @@
 package template
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
@@ -11,6 +12,8 @@ import (
 )
 
 type SecretLookup func(item, typ, field string) (string, error)
+
+type DecryptFunc func(ciphertext []byte) ([]byte, error)
 
 type Context struct {
 	Profile      string
@@ -23,9 +26,18 @@ type Context struct {
 	Vars         map[string]any
 	Env          map[string]string
 	SecretLookup SecretLookup
+	Decrypt      DecryptFunc
 }
 
-func NewContext(cfg *config.Config, profileName string) (*Context, error) {
+type ContextOption func(*Context)
+
+func WithDecrypt(fn DecryptFunc) ContextOption {
+	return func(c *Context) {
+		c.Decrypt = fn
+	}
+}
+
+func NewContext(cfg *config.Config, profileName string, opts ...ContextOption) (*Context, error) {
 	hostname, _ := os.Hostname()
 	home, _ := os.UserHomeDir()
 	username := os.Getenv("USER")
@@ -43,6 +55,10 @@ func NewContext(cfg *config.Config, profileName string) (*Context, error) {
 		SourceDir: cfg.SourceDir(),
 		Vars:      make(map[string]any),
 		Env:       make(map[string]string),
+	}
+
+	for _, opt := range opts {
+		opt(ctx)
 	}
 
 	for _, kv := range os.Environ() {
@@ -86,17 +102,37 @@ func (c *Context) loadVarFile(path string) error {
 	if strings.HasPrefix(path, "~/") {
 		path = c.HomeDir + path[1:]
 	} else if !strings.HasPrefix(path, "/") && c.SourceDir != "" {
-		// Resolve relative paths from source directory
 		path = c.SourceDir + "/" + path
 	}
 
+	encrypted := false
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return nil
+		// Try the #encrypted variant
+		if _, err := os.Stat(path + "#encrypted"); err == nil {
+			path = path + "#encrypted"
+			encrypted = true
+		} else {
+			return nil
+		}
+	} else if strings.HasSuffix(path, "#encrypted") {
+		encrypted = true
 	}
 
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
+	}
+
+	if encrypted {
+		if c.Decrypt == nil {
+			return fmt.Errorf("var_file %s is encrypted but no age identity is configured", path)
+		}
+		data, err = c.Decrypt(data)
+		if err != nil {
+			return fmt.Errorf("decrypting var_file %s: %w", path, err)
+		}
+		// Strip #encrypted suffix for format detection
+		path = strings.TrimSuffix(path, "#encrypted")
 	}
 
 	vars, err := parseVarFile(data, path)

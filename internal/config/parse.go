@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/subbeh/statemate/internal/encrypt"
 	"github.com/subbeh/statemate/internal/util"
 	"gopkg.in/yaml.v3"
 )
@@ -219,13 +220,24 @@ func (c *Config) setDefaults() error {
 }
 
 func (c *Config) loadIncludes() error {
+	var dec *encrypt.AgeEncryptor
+	if c.Age != nil && (c.Age.Identity != "" || c.Age.IdentityCommand != "") {
+		var err error
+		dec, err = encrypt.NewAgeEncryptor(c.Age.Identity, c.Age.IdentityCommand, nil)
+		if err != nil {
+			dec = nil
+		}
+	}
+
 	// Load top-level includes
 	for _, f := range c.Include {
-		partial, err := loadIncludeFile(c.resolveRelPath(f))
+		partial, err := c.loadInclude(f, dec)
 		if err != nil {
 			return fmt.Errorf("loading include %s: %w", f, err)
 		}
-		c.mergePartial(partial)
+		if partial != nil {
+			c.mergePartial(partial)
+		}
 	}
 
 	// Load profile-level includes
@@ -234,26 +246,52 @@ func (c *Config) loadIncludes() error {
 			continue
 		}
 		for _, f := range profile.Include {
-			partial, err := loadIncludeFile(c.resolveRelPath(f))
+			partial, err := c.loadInclude(f, dec)
 			if err != nil {
 				return fmt.Errorf("loading include %s: %w", f, err)
 			}
-			profile.mergePartial(partial)
+			if partial != nil {
+				profile.mergePartial(partial)
+			}
 		}
 	}
 
 	return nil
 }
 
-type includeFile struct {
-	Packages  *PackageList   `yaml:"packages" toml:"packages"`
-	Variables map[string]any `yaml:"variables" toml:"variables"`
-}
+func (c *Config) loadInclude(f string, dec *encrypt.AgeEncryptor) (*includeFile, error) {
+	path := c.resolveRelPath(f)
+	isEncrypted := strings.HasSuffix(path, "#encrypted")
 
-func loadIncludeFile(path string) (*includeFile, error) {
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		// Try #encrypted variant
+		if !isEncrypted {
+			encPath := path + "#encrypted"
+			if _, err := os.Stat(encPath); err == nil {
+				path = encPath
+				isEncrypted = true
+			} else {
+				return nil, nil
+			}
+		} else {
+			return nil, nil
+		}
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
+	}
+
+	if isEncrypted {
+		if dec == nil || !dec.CanDecrypt() {
+			return nil, fmt.Errorf("file is encrypted but no age identity is configured")
+		}
+		data, err = dec.Decrypt(data)
+		if err != nil {
+			return nil, fmt.Errorf("decrypting: %w", err)
+		}
+		path = strings.TrimSuffix(path, "#encrypted")
 	}
 
 	var inc includeFile
@@ -272,6 +310,12 @@ func loadIncludeFile(path string) (*includeFile, error) {
 
 	return &inc, nil
 }
+
+type includeFile struct {
+	Packages  *PackageList   `yaml:"packages" toml:"packages"`
+	Variables map[string]any `yaml:"variables" toml:"variables"`
+}
+
 
 func (c *Config) mergePartial(inc *includeFile) {
 	c.Packages = mergePackageLists(c.Packages, inc.Packages)

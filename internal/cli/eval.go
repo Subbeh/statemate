@@ -50,17 +50,21 @@ func runEval(cmd *cobra.Command, args []string) error {
 		profileName = profile.Detect(cfg)
 	}
 
-	tmplCtx, err := template.NewContext(cfg, profileName)
-	if err != nil {
-		return fmt.Errorf("creating template context: %w", err)
-	}
-
 	var enc *encrypt.AgeEncryptor
 	if cfg.Age != nil {
 		enc, err = encrypt.NewAgeEncryptor(cfg.Age.Identity, cfg.Age.IdentityCommand, cfg.Age.Recipients)
 		if err != nil {
 			return fmt.Errorf("setting up encryption: %w", err)
 		}
+	}
+
+	var ctxOpts []template.ContextOption
+	if enc != nil && enc.CanDecrypt() {
+		ctxOpts = append(ctxOpts, template.WithDecrypt(enc.Decrypt))
+	}
+	tmplCtx, err := template.NewContext(cfg, profileName, ctxOpts...)
+	if err != nil {
+		return fmt.Errorf("creating template context: %w", err)
 	}
 
 	if enc != nil && enc.CanDecrypt() {

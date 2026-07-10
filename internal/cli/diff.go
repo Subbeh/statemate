@@ -116,7 +116,11 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	tmplCtx, err := template.NewContext(cfg, profileName)
+	var ctxOpts []template.ContextOption
+	if enc != nil && enc.CanDecrypt() {
+		ctxOpts = append(ctxOpts, template.WithDecrypt(enc.Decrypt))
+	}
+	tmplCtx, err := template.NewContext(cfg, profileName, ctxOpts...)
 	if err != nil {
 		return fmt.Errorf("creating template context: %w", err)
 	}

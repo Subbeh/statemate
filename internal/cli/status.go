@@ -115,11 +115,13 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 		if mgr, err := secrets.NewManager(enc, identitySource, cfg.SecretsCache); err == nil {
 			templateFiles := discoverTemplateFiles(cfg, sourcePaths)
-			tmplCtx, _ := template.NewContext(cfg, profileName)
 			var decryptFn func([]byte) ([]byte, error)
+			var ctxOpts []template.ContextOption
 			if enc != nil && enc.CanDecrypt() {
 				decryptFn = enc.Decrypt
+				ctxOpts = append(ctxOpts, template.WithDecrypt(enc.Decrypt))
 			}
+			tmplCtx, _ := template.NewContext(cfg, profileName, ctxOpts...)
 			items := secrets.DiscoverByRendering(templateFiles, tmplCtx, decryptFn)
 			cached := mgr.ListCached()
 			for _, item := range items {

@@ -17,10 +17,14 @@ import (
 var decryptCmd = &cobra.Command{
 	Use:   "decrypt <source>",
 	Short: "Decrypt a managed file",
-	Long: `Decrypt a managed file in place.
+	Long: `Decrypt a file in place.
 
 This reads the encrypted file, decrypts it using the configured age identity,
 writes it back, and removes the #encrypted suffix from the filename.
+
+The file can be a managed source file or any file path (e.g. a var_file
+in .matedata/). Paths are resolved relative to the current directory,
+falling back to the source directory. The #encrypted suffix is optional.
 
 The age identity must be configured in mate.yaml:
 
@@ -29,7 +33,7 @@ The age identity must be configured in mate.yaml:
 
 Examples:
   mate decrypt nvim/secrets.yaml#encrypted
-  mate decrypt secrets.yaml`,
+  mate decrypt .matedata/secrets.yaml`,
 	Args:              cobra.ExactArgs(1),
 	RunE:              runDecrypt,
 	ValidArgsFunction: completeEncryptedSourceFiles,
@@ -84,15 +88,31 @@ func runDecrypt(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if entry == nil {
+	if entry != nil {
+		if !entry.Attrs.Encrypted {
+			return fmt.Errorf("file is not encrypted: %s", srcPattern)
+		}
+		return decryptFileAt(entry.SourcePath, entry.Mode.Perm(), enc)
+	}
+
+	// Fall back to resolving as a path (try with #encrypted suffix too)
+	filePath := resolveEncryptedFilePath(srcPattern, cfg.SourceDir())
+	if filePath == "" {
+		return fmt.Errorf("file not found: %s", srcPattern)
+	}
+	if !strings.HasSuffix(filePath, "#encrypted") {
+		return fmt.Errorf("file is not encrypted: %s", srcPattern)
+	}
+	info, statErr := os.Stat(filePath)
+	if statErr != nil {
 		return fmt.Errorf("file not found: %s", srcPattern)
 	}
 
-	if !entry.Attrs.Encrypted {
-		return fmt.Errorf("file is not encrypted: %s", srcPattern)
-	}
+	return decryptFileAt(filePath, info.Mode().Perm(), enc)
+}
 
-	ciphertext, err := os.ReadFile(entry.SourcePath)
+func decryptFileAt(path string, perm os.FileMode, enc *encrypt.AgeEncryptor) error {
+	ciphertext, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("reading file: %w", err)
 	}
@@ -102,17 +122,16 @@ func runDecrypt(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("decrypting: %w", err)
 	}
 
-	newPath := strings.TrimSuffix(entry.SourcePath, "#encrypted")
+	newPath := strings.TrimSuffix(path, "#encrypted")
 
-	if err := os.WriteFile(newPath, plaintext, entry.Mode.Perm()); err != nil {
+	if err := os.WriteFile(newPath, plaintext, perm); err != nil {
 		return fmt.Errorf("writing decrypted file: %w", err)
 	}
 
-	if err := os.Remove(entry.SourcePath); err != nil {
+	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("removing encrypted file: %w", err)
 	}
 
-	fmt.Printf("Decrypted: %s -> %s\n", util.ShortenPath(entry.SourcePath), util.ShortenPath(newPath))
-
+	fmt.Printf("Decrypted: %s -> %s\n", util.ShortenPath(path), util.ShortenPath(newPath))
 	return nil
 }

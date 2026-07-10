@@ -87,17 +87,22 @@ func runApply(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = db.Close() }()
 
-	tmplCtx, err := template.NewContext(cfg, profileName)
-	if err != nil {
-		return fmt.Errorf("creating template context: %w", err)
-	}
-
 	var enc *encrypt.AgeEncryptor
 	if cfg.Age != nil {
 		enc, err = encrypt.NewAgeEncryptor(cfg.Age.Identity, cfg.Age.IdentityCommand, cfg.Age.Recipients)
 		if err != nil {
 			return fmt.Errorf("setting up encryption: %w", err)
 		}
+	}
+
+	var ctxOpts []template.ContextOption
+	if enc != nil && enc.CanDecrypt() {
+		ctxOpts = append(ctxOpts, template.WithDecrypt(enc.Decrypt))
+	}
+
+	tmplCtx, err := template.NewContext(cfg, profileName, ctxOpts...)
+	if err != nil {
+		return fmt.Errorf("creating template context: %w", err)
 	}
 
 	{
@@ -140,7 +145,7 @@ func runApply(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return fmt.Errorf("reloading config: %w", err)
 			}
-			tmplCtx, err = template.NewContext(cfg, profileName)
+			tmplCtx, err = template.NewContext(cfg, profileName, ctxOpts...)
 			if err != nil {
 				return fmt.Errorf("reloading template context: %w", err)
 			}

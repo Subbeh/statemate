@@ -230,14 +230,16 @@ func setupSecrets(cmd *cobra.Command) (*secrets.Manager, []secrets.FetchItem, er
 	// Discover all bitwarden() calls by rendering templates
 	templateFiles := discoverTemplateFiles(cfg, sourcePaths)
 
-	tmplCtx, err := template.NewContext(cfg, profileName)
-	if err != nil {
-		return nil, nil, fmt.Errorf("creating template context: %w", err)
-	}
-
 	var decryptFn func([]byte) ([]byte, error)
+	var ctxOpts []template.ContextOption
 	if enc != nil && enc.CanDecrypt() {
 		decryptFn = enc.Decrypt
+		ctxOpts = append(ctxOpts, template.WithDecrypt(enc.Decrypt))
+	}
+
+	tmplCtx, err := template.NewContext(cfg, profileName, ctxOpts...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating template context: %w", err)
 	}
 
 	items := secrets.DiscoverByRendering(templateFiles, tmplCtx, decryptFn)
