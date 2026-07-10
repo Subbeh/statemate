@@ -250,7 +250,7 @@ func setupSecrets(cmd *cobra.Command) (*secrets.Manager, []secrets.FetchItem, er
 func discoverTemplateFiles(cfg *config.Config, sourcePaths []string) []string {
 	var files []string
 
-	scanner := source.NewScanner(cfg.TargetBase, cfg.SourceDir())
+	scanner := source.NewScannerWithIgnore(cfg.TargetBase, cfg.SourceDir(), nil, cfg.Ignore)
 	tree, err := scanner.Scan(sourcePaths)
 	if err != nil {
 		return files

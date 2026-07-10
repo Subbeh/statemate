@@ -39,5 +39,5 @@ func newScanner(cfg *config.Config, profileName string) (*source.Scanner, error)
 		return template.Render(data, tmplCtx)
 	}
 
-	return source.NewScannerWithRenderer(cfg.TargetBase, cfg.SourceDir(), renderer), nil
+	return source.NewScannerWithIgnore(cfg.TargetBase, cfg.SourceDir(), renderer, cfg.Ignore), nil
 }

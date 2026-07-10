@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tab completion now shows only files in the current directory tree with relative paths instead of all files with absolute paths
 
 ### Added
+- `ignore` key in `mate.yaml` for gitignore-style patterns to exclude files from scanning (replaces `.mateignore` files)
 - Per-source `target_base` in `.mate.yaml` to deploy files to a different root directory
 - `.mate.yaml` files now support template rendering (use variables like `{{ .Vars.workspace }}`)
 - `mate add` prompts to create/update `.mate.yaml` when adding files outside home directory
@@ -24,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - `mate profile` now shows the sources that apply to the active profile
+
+### Removed
+- `.mateignore` files are no longer supported (use `ignore` in `mate.yaml` instead)
 
 ## [0.1.0] - 2026-07-07
 

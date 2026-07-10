@@ -16,6 +16,7 @@ type Config struct {
 	VarCmds       map[string]string   `yaml:"variable_commands" toml:"variable_commands"`
 	Packages     *PackageList `yaml:"packages" toml:"packages"`
 	Include      []string     `yaml:"include" toml:"include"`
+	Ignore       []string     `yaml:"ignore" toml:"ignore"`
 	AURHelper    string       `yaml:"aur_helper" toml:"aur_helper"`
 	SecretsCache string       `yaml:"secrets_cache" toml:"secrets_cache"`
 	DiffTool     string       `yaml:"diff_tool" toml:"diff_tool"`

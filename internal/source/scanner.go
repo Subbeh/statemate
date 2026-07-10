@@ -15,7 +15,7 @@ type Scanner struct {
 	targetBase       string
 	repoRoot         string
 	dirConfigs       map[string]*config.DirConfig
-	ignoreFiles      map[string]*gitignore.GitIgnore
+	ignore           *gitignore.GitIgnore
 	templateRenderer config.TemplateRenderer
 }
 
@@ -24,15 +24,18 @@ func NewScanner(targetBase, repoRoot string) *Scanner {
 }
 
 func NewScannerWithRenderer(targetBase, repoRoot string, renderer config.TemplateRenderer) *Scanner {
-	s := &Scanner{
+	return &Scanner{
 		targetBase:       targetBase,
 		repoRoot:         repoRoot,
 		dirConfigs:       make(map[string]*config.DirConfig),
-		ignoreFiles:      make(map[string]*gitignore.GitIgnore),
 		templateRenderer: renderer,
 	}
-	if repoRoot != "" {
-		s.loadIgnoreFile(repoRoot, repoRoot)
+}
+
+func NewScannerWithIgnore(targetBase, repoRoot string, renderer config.TemplateRenderer, patterns []string) *Scanner {
+	s := NewScannerWithRenderer(targetBase, repoRoot, renderer)
+	if len(patterns) > 0 {
+		s.ignore = gitignore.CompileIgnoreLines(patterns...)
 	}
 	return s
 }
@@ -62,6 +65,8 @@ func (s *Scanner) scanSource(sourceDir string, tree *Tree) error {
 		}
 	}
 
+	sourceName := filepath.Base(sourceDir)
+
 	return filepath.WalkDir(sourceDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -73,7 +78,6 @@ func (s *Scanner) scanSource(sourceDir string, tree *Tree) error {
 		}
 
 		if relToSource == "." {
-			s.loadIgnoreFile(sourceDir, sourceDir)
 			return nil
 		}
 
@@ -84,11 +88,7 @@ func (s *Scanner) scanSource(sourceDir string, tree *Tree) error {
 			return nil
 		}
 
-		if d.IsDir() {
-			s.loadIgnoreFile(sourceDir, path)
-		}
-
-		if s.isIgnored(sourceDir, relToSource, d.IsDir()) {
+		if s.isIgnored(filepath.Join(sourceName, relToSource), d.IsDir()) {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
@@ -209,56 +209,23 @@ func (s *Scanner) getParentAttrs(relDir string) Attrs {
 
 func (s *Scanner) shouldSkip(name string) bool {
 	switch name {
-	case ".git", ".mate.yaml", ".mate.yml", ".mate.toml", ".matescripts", ".mateignore":
+	case ".git", ".mate.yaml", ".mate.yml", ".mate.toml", ".matescripts":
 		return true
 	}
 	return false
 }
 
-func (s *Scanner) loadIgnoreFile(_, dir string) {
-	ignorePath := filepath.Join(dir, ".mateignore")
-	if _, err := os.Stat(ignorePath); err != nil {
-		return
+func (s *Scanner) isIgnored(relPath string, isDir bool) bool {
+	if s.ignore == nil {
+		return false
 	}
 
-	gi, err := gitignore.CompileIgnoreFile(ignorePath)
-	if err != nil {
-		return
+	checkPath := relPath
+	if isDir {
+		checkPath = relPath + "/"
 	}
 
-	s.ignoreFiles[dir] = gi
-}
-
-func (s *Scanner) isIgnored(sourceDir, relPath string, isDir bool) bool {
-	fullPath := filepath.Join(sourceDir, relPath)
-
-	for dir, gi := range s.ignoreFiles {
-		if !strings.HasPrefix(fullPath+"/", dir+"/") && dir != s.repoRoot {
-			continue
-		}
-
-		var relToIgnoreDir string
-		var err error
-		if dir == s.repoRoot && s.repoRoot != "" {
-			relToIgnoreDir, err = filepath.Rel(s.repoRoot, fullPath)
-		} else {
-			relToIgnoreDir, err = filepath.Rel(dir, fullPath)
-		}
-		if err != nil {
-			continue
-		}
-
-		checkPath := relToIgnoreDir
-		if isDir {
-			checkPath = relToIgnoreDir + "/"
-		}
-
-		if gi.MatchesPath(checkPath) {
-			return true
-		}
-	}
-
-	return false
+	return s.ignore.MatchesPath(checkPath)
 }
 
 func (s *Scanner) processGenerateDirectives(sourceDir string, dirCfg *config.DirConfig, tree *Tree) error {

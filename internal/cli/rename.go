@@ -48,7 +48,7 @@ func runRename(cmd *cobra.Command, args []string) error {
 	allSources := profile.AllSources(cfg)
 	allSourcePaths := cfg.ResolveSourcePaths(allSources)
 
-	scanner := source.NewScanner(cfg.TargetBase, cfg.SourceDir())
+	scanner := source.NewScannerWithIgnore(cfg.TargetBase, cfg.SourceDir(), nil, cfg.Ignore)
 	tree, err := scanner.Scan(allSourcePaths)
 	if err != nil {
 		return fmt.Errorf("scanning sources: %w", err)
