@@ -66,7 +66,7 @@ func (d *Discoverer) discoverDir(dir, sourceDir string) (Scripts, error) {
 			return nil
 		}
 
-		name, freq, timing, template, order := ParseScriptName(entry.Name())
+		name, freq, timing, template, profile, order := ParseScriptName(entry.Name())
 
 		contentHash, err := state.HashFile(path)
 		if err != nil {
@@ -79,6 +79,7 @@ func (d *Discoverer) discoverDir(dir, sourceDir string) (Scripts, error) {
 			Frequency:   freq,
 			Timing:      timing,
 			Template:    template,
+			Profile:     profile,
 			Order:       order,
 			SourceDir:   sourceDir,
 			ContentHash: contentHash,
@@ -110,13 +111,14 @@ func (d *Discoverer) DiscoverFromDirConfig(sourceDir string, paths []string) (Sc
 			return nil, err
 		}
 
-		name, freq, timing, template, order := ParseScriptName(filepath.Base(p))
+		name, freq, timing, template, profile, order := ParseScriptName(filepath.Base(p))
 		scripts = append(scripts, &Script{
 			Path:        fullPath,
 			Name:        name,
 			Frequency:   freq,
 			Timing:      timing,
 			Template:    template,
+			Profile:     profile,
 			Order:       order,
 			SourceDir:   sourceDir,
 			ContentHash: contentHash,

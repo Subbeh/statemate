@@ -65,6 +65,7 @@ type Script struct {
 	Frequency   Frequency
 	Timing      Timing
 	Template    bool
+	Profile     string
 	Order       int
 	SourceDir   string
 	ContentHash string
@@ -78,15 +79,16 @@ func (s *Script) IsExecutable() bool {
 	return info.Mode()&0111 != 0
 }
 
-// Script naming format: <order>-<name>.<ext>#<freq>#<timing>[#template]
+// Script naming format: <order>-<name>.<ext>#<freq>#<timing>[#template][#profile:<name>]
 // Examples:
 //   01-setup.sh#once#before
 //   02-cleanup.sh#always#after
 //   03-render.sh#onchange#before#template
+//   04-init.sh#once#before#profile:arch
 //   manual-task.sh (no attributes = manual)
 var orderPattern = regexp.MustCompile(`^(\d+)-(.+)$`)
 
-func ParseScriptName(filename string) (name string, freq Frequency, timing Timing, template bool, order int) {
+func ParseScriptName(filename string) (name string, freq Frequency, timing Timing, template bool, profile string, order int) {
 	parts := strings.Split(filename, "#")
 	nameWithOrder := parts[0]
 
@@ -104,32 +106,32 @@ func ParseScriptName(filename string) (name string, freq Frequency, timing Timin
 
 	// Parse attributes
 	for _, attr := range parts[1:] {
-		switch strings.ToLower(attr) {
-		case "once":
+		lower := strings.ToLower(attr)
+		switch {
+		case lower == "once":
 			freq = FreqOnce
-		case "onchange":
+		case lower == "onchange":
 			freq = FreqOnchange
-		case "always":
+		case lower == "always":
 			freq = FreqAlways
-		case "daily":
+		case lower == "daily":
 			freq = FreqDaily
-		case "weekly":
+		case lower == "weekly":
 			freq = FreqWeekly
-		case "monthly":
+		case lower == "monthly":
 			freq = FreqMonthly
-		case "before":
+		case lower == "before":
 			timing = TimingBefore
-		case "after":
+		case lower == "after":
 			timing = TimingAfter
-		case "template":
+		case lower == "template":
 			template = true
+		case strings.HasPrefix(lower, "profile:"):
+			profile = strings.TrimPrefix(attr, "profile:")
 		}
 	}
 
-	// If frequency is set but timing is missing, default to before
-	// (timing is already TimingBefore by default, so nothing to do)
-
-	return name, freq, timing, template, order
+	return name, freq, timing, template, profile, order
 }
 
 type Scripts []*Script
@@ -171,6 +173,16 @@ func (s Scripts) Automatic() Scripts {
 	var result Scripts
 	for _, script := range s {
 		if script.Frequency != FreqManual {
+			result = append(result, script)
+		}
+	}
+	return result
+}
+
+func (s Scripts) ByProfile(profileName string) Scripts {
+	var result Scripts
+	for _, script := range s {
+		if script.Profile == "" || script.Profile == profileName {
 			result = append(result, script)
 		}
 	}

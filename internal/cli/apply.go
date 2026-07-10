@@ -127,7 +127,7 @@ func runApply(cmd *cobra.Command, args []string) error {
 
 	executor := scripts.NewExecutor(db, tmplCtx, dryRun, verbose > 0)
 
-	beforeScripts := allScripts.Automatic().ByTiming(scripts.TimingBefore)
+	beforeScripts := allScripts.Automatic().ByProfile(profileName).ByTiming(scripts.TimingBefore)
 	beforeScripts.Sort()
 
 	if len(beforeScripts) > 0 {
@@ -158,7 +158,7 @@ func runApply(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	afterScripts := allScripts.Automatic().ByTiming(scripts.TimingAfter)
+	afterScripts := allScripts.Automatic().ByProfile(profileName).ByTiming(scripts.TimingAfter)
 	afterScripts.Sort()
 
 	if len(afterScripts) > 0 {

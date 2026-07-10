@@ -98,9 +98,12 @@ func runScriptsList(cmd *cobra.Command, args []string) error {
 			relPath = script.Path
 		}
 
-		tmpl := ""
+		flags := ""
 		if script.Template {
-			tmpl = " [T]"
+			flags += " [T]"
+		}
+		if script.Profile != "" {
+			flags += " [" + script.Profile + "]"
 		}
 
 		fmt.Printf("%-10s %-8s %-6d %-30s %s%s%s\n",
@@ -109,7 +112,7 @@ func runScriptsList(cmd *cobra.Command, args []string) error {
 			script.Order,
 			script.Name,
 			relPath,
-			tmpl,
+			flags,
 			status,
 		)
 	}
@@ -149,13 +152,14 @@ func runScript(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return fmt.Errorf("hashing script: %w", err)
 			}
-			name, freq, timing, tmpl, order := scripts.ParseScriptName(filepath.Base(scriptArg))
+			name, freq, timing, tmpl, prof, order := scripts.ParseScriptName(filepath.Base(scriptArg))
 			script = &scripts.Script{
 				Path:        scriptArg,
 				Name:        name,
 				Frequency:   freq,
 				Timing:      timing,
 				Template:    tmpl,
+				Profile:     prof,
 				Order:       order,
 				ContentHash: contentHash,
 			}

@@ -13,24 +13,28 @@ func TestParseScriptName(t *testing.T) {
 		wantFreq     Frequency
 		wantTiming   Timing
 		wantTemplate bool
+		wantProfile  string
 		wantOrder    int
 	}{
-		{"01-setup.sh#once#before", "setup.sh", FreqOnce, TimingBefore, false, 1},
-		{"02-cleanup.sh#always#after", "cleanup.sh", FreqAlways, TimingAfter, false, 2},
-		{"03-render.sh#onchange#before#template", "render.sh", FreqOnchange, TimingBefore, true, 3},
-		{"10-install.sh#once#after", "install.sh", FreqOnce, TimingAfter, false, 10},
-		{"05-prep.sh#always#before", "prep.sh", FreqAlways, TimingBefore, false, 5},
-		{"manual-task.sh", "manual-task.sh", FreqManual, TimingBefore, false, 0},
-		{"script", "script", FreqManual, TimingBefore, false, 0},
-		{"100-long-name-here.zsh#onchange#after", "long-name-here.zsh", FreqOnchange, TimingAfter, false, 100},
+		{"01-setup.sh#once#before", "setup.sh", FreqOnce, TimingBefore, false, "", 1},
+		{"02-cleanup.sh#always#after", "cleanup.sh", FreqAlways, TimingAfter, false, "", 2},
+		{"03-render.sh#onchange#before#template", "render.sh", FreqOnchange, TimingBefore, true, "", 3},
+		{"10-install.sh#once#after", "install.sh", FreqOnce, TimingAfter, false, "", 10},
+		{"05-prep.sh#always#before", "prep.sh", FreqAlways, TimingBefore, false, "", 5},
+		{"manual-task.sh", "manual-task.sh", FreqManual, TimingBefore, false, "", 0},
+		{"script", "script", FreqManual, TimingBefore, false, "", 0},
+		{"100-long-name-here.zsh#onchange#after", "long-name-here.zsh", FreqOnchange, TimingAfter, false, "", 100},
 		// Frequency only (timing defaults to before)
-		{"01-setup.sh#once", "setup.sh", FreqOnce, TimingBefore, false, 1},
-		{"01-setup.sh#always", "setup.sh", FreqAlways, TimingBefore, false, 1},
+		{"01-setup.sh#once", "setup.sh", FreqOnce, TimingBefore, false, "", 1},
+		{"01-setup.sh#always", "setup.sh", FreqAlways, TimingBefore, false, "", 1},
+		// Profile attribute
+		{"00-init.sh#once#before#profile:arch", "init.sh", FreqOnce, TimingBefore, false, "arch", 0},
+		{"01-setup.sh#always#after#profile:work", "setup.sh", FreqAlways, TimingAfter, false, "work", 1},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.filename, func(t *testing.T) {
-			name, freq, timing, template, order := ParseScriptName(tc.filename)
+			name, freq, timing, template, profile, order := ParseScriptName(tc.filename)
 			if name != tc.wantName {
 				t.Errorf("name = %v, want %v", name, tc.wantName)
 			}
@@ -42,6 +46,9 @@ func TestParseScriptName(t *testing.T) {
 			}
 			if template != tc.wantTemplate {
 				t.Errorf("template = %v, want %v", template, tc.wantTemplate)
+			}
+			if profile != tc.wantProfile {
+				t.Errorf("profile = %v, want %v", profile, tc.wantProfile)
 			}
 			if order != tc.wantOrder {
 				t.Errorf("order = %v, want %v", order, tc.wantOrder)
