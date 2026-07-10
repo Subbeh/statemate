@@ -179,12 +179,21 @@ func (s Scripts) Automatic() Scripts {
 	return result
 }
 
-func (s Scripts) ByProfile(profileName string) Scripts {
+func (s Scripts) ByProfile(profileChain []string) Scripts {
 	var result Scripts
 	for _, script := range s {
-		if script.Profile == "" || script.Profile == profileName {
+		if script.Profile == "" || matchesProfile(script.Profile, profileChain) {
 			result = append(result, script)
 		}
 	}
 	return result
+}
+
+func matchesProfile(scriptProfile string, chain []string) bool {
+	for _, p := range chain {
+		if p == scriptProfile {
+			return true
+		}
+	}
+	return false
 }

@@ -163,6 +163,12 @@ func ResolveSources(cfg *config.Config, profileName string) []string {
 	return sources
 }
 
+// InheritanceChain returns the full chain of profiles from ancestors to the
+// given profile (e.g. ["macos", "work"] for profile "work" which extends "macos").
+func InheritanceChain(cfg *config.Config, profileName string) []string {
+	return resolveInheritanceChain(cfg, profileName)
+}
+
 func resolveInheritanceChain(cfg *config.Config, profileName string) []string {
 	var chain []string
 	seen := make(map[string]bool)
