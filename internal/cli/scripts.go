@@ -78,54 +78,81 @@ func runScriptsList(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = db.Close() }()
 
-	fmt.Printf("%-10s %-8s %-6s %-30s %s\n", "FREQUENCY", "TIMING", "ORDER", "NAME", "PATH")
+	profileChain := profile.InheritanceChain(cfg, profileName)
+
+	fmt.Printf(" %-10s %-8s %-6s %-10s %-30s %s\n", "FREQUENCY", "TIMING", "ORDER", "SOURCE", "NAME", "STATUS")
 	fmt.Println(strings.Repeat("-", 90))
 
 	for _, script := range allScripts {
+		active := script.Profile == "" || matchesChain(script.Profile, profileChain)
+
+		marker := " "
+		if !active {
+			marker = "-"
+		}
+
 		status := ""
+		lastRun, _ := db.GetScriptRun(script.Path)
+		if lastRun != nil {
+			status = "ran " + lastRun.RunAt.Format("2006-01-02 15:04")
+		} else {
+			status = "never"
+		}
+
 		switch script.Frequency {
 		case scripts.FreqOnce:
-			hasRun, _ := db.HasScriptRun(script.Path)
-			if hasRun {
-				status = " (ran)"
+			if lastRun != nil {
+				status = "done (" + lastRun.RunAt.Format("2006-01-02 15:04") + ")"
+			} else {
+				status = "pending"
 			}
 		case scripts.FreqOnchange:
-			hasRunWithHash, _ := db.HasScriptRunWithHash(script.Path, script.ContentHash)
-			if hasRunWithHash {
-				status = " (unchanged)"
-			} else {
-				prevRun, _ := db.GetScriptRun(script.Path)
-				if prevRun != nil {
-					status = " (changed)"
+			if lastRun != nil {
+				hasRunWithHash, _ := db.HasScriptRunWithHash(script.Path, script.ContentHash)
+				if hasRunWithHash {
+					status = "unchanged (" + lastRun.RunAt.Format("2006-01-02 15:04") + ")"
+				} else {
+					status = "changed (" + lastRun.RunAt.Format("2006-01-02 15:04") + ")"
 				}
+			} else {
+				status = "pending"
 			}
 		}
 
-		relPath, _ := filepath.Rel(cfg.SourceDir(), script.Path)
-		if relPath == "" || strings.HasPrefix(relPath, "..") {
-			relPath = script.Path
-		}
-
-		flags := ""
-		if script.Template {
-			flags += " [T]"
-		}
+		name := script.Name
 		if script.Profile != "" {
-			flags += " [" + script.Profile + "]"
+			name += " [" + script.Profile + "]"
+		}
+		if script.Template {
+			name += " [T]"
 		}
 
-		fmt.Printf("%-10s %-8s %-6d %-30s %s%s%s\n",
+		source := ""
+		if script.SourceDir != "" {
+			source = filepath.Base(script.SourceDir)
+		}
+
+		fmt.Printf("%s %-10s %-8s %-6d %-10s %-30s %s\n",
+			marker,
 			script.Frequency,
 			script.Timing,
 			script.Order,
-			script.Name,
-			relPath,
-			flags,
+			source,
+			name,
 			status,
 		)
 	}
 
 	return nil
+}
+
+func matchesChain(target string, chain []string) bool {
+	for _, p := range chain {
+		if p == target {
+			return true
+		}
+	}
+	return false
 }
 
 func runScript(cmd *cobra.Command, args []string) error {
