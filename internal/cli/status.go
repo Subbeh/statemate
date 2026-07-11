@@ -100,7 +100,8 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("discovering scripts: %w", err)
 	}
 
-	pendingScripts, err := scripts.PendingScripts(allScripts.Automatic(), db)
+	profileChain := profile.InheritanceChain(cfg, profileName)
+	pendingScripts, err := scripts.PendingScripts(allScripts.Automatic().ByProfile(profileChain), db)
 	if err != nil {
 		return fmt.Errorf("checking pending scripts: %w", err)
 	}

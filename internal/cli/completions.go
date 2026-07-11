@@ -273,7 +273,15 @@ func completeScripts(cmd *cobra.Command, args []string, toComplete string) ([]st
 		return nil, cobra.ShellCompDirectiveError
 	}
 
-	discoverer := scripts.NewDiscoverer(cfg.SourceDir(), cfg.AbsoluteSources())
+	profileName, _ := cmd.Flags().GetString("profile")
+	if profileName == "" {
+		profileName = profile.Detect(cfg)
+	}
+
+	sources := profile.ResolveSources(cfg, profileName)
+	sourcePaths := cfg.ResolveSourcePaths(sources)
+
+	discoverer := scripts.NewDiscoverer(cfg.SourceDir(), sourcePaths)
 	allScripts, err := discoverer.Discover()
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveError

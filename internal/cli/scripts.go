@@ -53,7 +53,15 @@ func runScriptsList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	discoverer := scripts.NewDiscoverer(cfg.SourceDir(), cfg.AbsoluteSources())
+	profileName, _ := cmd.Flags().GetString("profile")
+	if profileName == "" {
+		profileName = profile.Detect(cfg)
+	}
+
+	sources := profile.ResolveSources(cfg, profileName)
+	sourcePaths := cfg.ResolveSourcePaths(sources)
+
+	discoverer := scripts.NewDiscoverer(cfg.SourceDir(), sourcePaths)
 	allScripts, err := discoverer.Discover()
 	if err != nil {
 		return fmt.Errorf("discovering scripts: %w", err)
@@ -130,7 +138,15 @@ func runScript(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	discoverer := scripts.NewDiscoverer(cfg.SourceDir(), cfg.AbsoluteSources())
+	profileName, _ := cmd.Flags().GetString("profile")
+	if profileName == "" {
+		profileName = profile.Detect(cfg)
+	}
+
+	sources := profile.ResolveSources(cfg, profileName)
+	sourcePaths := cfg.ResolveSourcePaths(sources)
+
+	discoverer := scripts.NewDiscoverer(cfg.SourceDir(), sourcePaths)
 	allScripts, err := discoverer.Discover()
 	if err != nil {
 		return fmt.Errorf("discovering scripts: %w", err)
@@ -175,11 +191,6 @@ func runScript(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("opening state database: %w", err)
 	}
 	defer func() { _ = db.Close() }()
-
-	profileName, _ := cmd.Flags().GetString("profile")
-	if profileName == "" {
-		profileName = profile.Detect(cfg)
-	}
 
 	var tmplCtx *template.Context
 	if script.Template {

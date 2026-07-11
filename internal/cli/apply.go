@@ -120,7 +120,7 @@ func runApply(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	discoverer := scripts.NewDiscoverer(cfg.SourceDir(), cfg.AbsoluteSources())
+	discoverer := scripts.NewDiscoverer(cfg.SourceDir(), sourcePaths)
 	allScripts, err := discoverer.Discover()
 	if err != nil {
 		return fmt.Errorf("discovering scripts: %w", err)
