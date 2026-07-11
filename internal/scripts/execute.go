@@ -245,7 +245,14 @@ func (e *Executor) run(script *Script) error {
 		cmd.Env = append(cmd.Env, "STATEMATE_SOURCE_DIR="+script.SourceDir)
 	}
 
-	return cmd.Run()
+	fmt.Printf(">>> running: %s (%s/%s)\n", script.Name, script.Frequency, script.Timing)
+	err := cmd.Run()
+	if err != nil {
+		fmt.Printf("<<< failed:  %s (%v)\n", script.Name, err)
+	} else {
+		fmt.Printf("<<< done:    %s\n", script.Name)
+	}
+	return err
 }
 
 func (e *Executor) recordRun(script *Script) error {
