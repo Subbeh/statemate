@@ -27,7 +27,7 @@ var scriptsListCmd = &cobra.Command{
 	RunE:  runScriptsList,
 }
 
-var runCmd = &cobra.Command{
+var scriptsRunCmd = &cobra.Command{
 	Use:               "run <script>",
 	Short:             "Run a script",
 	Long:              "Manually run a script by name or path",
@@ -38,11 +38,11 @@ var runCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(scriptsCmd)
-	rootCmd.AddCommand(runCmd)
 	scriptsCmd.AddCommand(scriptsListCmd)
+	scriptsCmd.AddCommand(scriptsRunCmd)
 
-	runCmd.Flags().Bool("dry-run", false, "show what would be done without running")
-	runCmd.Flags().BoolP("verbose", "v", false, "verbose output")
+	scriptsRunCmd.Flags().Bool("dry-run", false, "show what would be done without running")
+	scriptsRunCmd.Flags().BoolP("verbose", "v", false, "verbose output")
 }
 
 func runScriptsList(cmd *cobra.Command, args []string) error {
