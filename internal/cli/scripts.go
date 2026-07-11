@@ -91,31 +91,33 @@ func runScriptsList(cmd *cobra.Command, args []string) error {
 			marker = "-"
 		}
 
-		status := ""
-		lastRun, _ := db.GetScriptRun(script.Path)
-		if lastRun != nil {
-			status = "ran " + lastRun.RunAt.Format("2006-01-02 15:04")
+		var status string
+		if !active {
+			status = "n/a"
 		} else {
-			status = "never"
-		}
-
-		switch script.Frequency {
-		case scripts.FreqOnce:
-			if lastRun != nil {
-				status = "done (" + lastRun.RunAt.Format("2006-01-02 15:04") + ")"
-			} else {
-				status = "pending"
-			}
-		case scripts.FreqOnchange:
-			if lastRun != nil {
-				hasRunWithHash, _ := db.HasScriptRunWithHash(script.Path, script.ContentHash)
-				if hasRunWithHash {
-					status = "unchanged (" + lastRun.RunAt.Format("2006-01-02 15:04") + ")"
+			lastRun, _ := db.GetScriptRun(script.Path)
+			switch script.Frequency {
+			case scripts.FreqOnce:
+				if lastRun != nil {
+					status = "done (" + lastRun.RunAt.Format("2006-01-02 15:04") + ")"
 				} else {
-					status = "changed (" + lastRun.RunAt.Format("2006-01-02 15:04") + ")"
+					status = "pending"
 				}
-			} else {
-				status = "pending"
+			case scripts.FreqOnchange:
+				if lastRun != nil {
+					hasRunWithHash, _ := db.HasScriptRunWithHash(script.Path, script.ContentHash)
+					if hasRunWithHash {
+						status = "unchanged (" + lastRun.RunAt.Format("2006-01-02 15:04") + ")"
+					} else {
+						status = "changed (" + lastRun.RunAt.Format("2006-01-02 15:04") + ")"
+					}
+				} else {
+					status = "pending"
+				}
+			default:
+				if lastRun != nil {
+					status = "ran " + lastRun.RunAt.Format("2006-01-02 15:04")
+				}
 			}
 		}
 
