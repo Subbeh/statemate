@@ -1,15 +1,38 @@
 package scripts
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/subbeh/statemate/internal/state"
 	"github.com/subbeh/statemate/internal/template"
 )
+
+func readShebang(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return "sh"
+	}
+	defer func() { _ = f.Close() }()
+
+	scanner := bufio.NewScanner(f)
+	if scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "#!") {
+			interp := strings.TrimSpace(line[2:])
+			if strings.HasPrefix(interp, "/usr/bin/env ") {
+				return strings.TrimSpace(interp[len("/usr/bin/env "):])
+			}
+			return interp
+		}
+	}
+	return "sh"
+}
 
 type Executor struct {
 	db      *state.DB
@@ -197,13 +220,15 @@ func (e *Executor) run(script *Script) error {
 		}
 
 		scriptPath = tmpFile.Name()
-	} else {
-		if !script.IsExecutable() {
-			return fmt.Errorf("script is not executable: %s", script.Path)
-		}
 	}
 
-	cmd := exec.Command(scriptPath)
+	var cmd *exec.Cmd
+	if script.IsExecutable() || scriptPath != script.Path {
+		cmd = exec.Command(scriptPath)
+	} else {
+		interpreter := readShebang(scriptPath)
+		cmd = exec.Command(interpreter, scriptPath)
+	}
 	cmd.Dir = filepath.Dir(script.Path)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
