@@ -108,17 +108,19 @@ func runApply(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("creating template context: %w", err)
 	}
 
-	{
-		identitySource := ""
-		if cfg.Age != nil {
-			identitySource = cfg.Age.Identity
+	identitySource := ""
+	if cfg.Age != nil {
+		identitySource = cfg.Age.Identity
+	}
+	mgr, mgrErr := secrets.NewManager(enc, identitySource, cfg.SecretsCache)
+	if mgrErr == nil {
+		tmplCtx.SecretLookup = func(item, typ, field string) (string, error) {
+			key := secrets.CacheKey{Provider: "bitwarden", Item: item, Type: typ, Field: field}
+			return mgr.Get(key)
 		}
-		mgr, err := secrets.NewManager(enc, identitySource, cfg.SecretsCache)
-		if err == nil {
-			tmplCtx.SecretLookup = func(item, typ, field string) (string, error) {
-				key := secrets.CacheKey{Provider: "bitwarden", Item: item, Type: typ, Field: field}
-				return mgr.Get(key)
-			}
+
+		if err := fetchMissingSecrets(cfg, mgr, enc, profileName, sourcePaths, dryRun, verbose); err != nil {
+			return err
 		}
 	}
 
@@ -195,6 +197,62 @@ func runApply(cmd *cobra.Command, args []string) error {
 		} else {
 			fmt.Printf("%s\n", strings.Join(parts, ", "))
 		}
+	}
+
+	return nil
+}
+
+func fetchMissingSecrets(cfg *config.Config, mgr *secrets.Manager, enc *encrypt.AgeEncryptor, profileName string, sourcePaths []string, dryRun bool, verbose int) error {
+	templateFiles := discoverTemplateFiles(cfg, sourcePaths)
+	if len(templateFiles) == 0 {
+		return nil
+	}
+
+	var decryptFn func([]byte) ([]byte, error)
+	var ctxOpts []template.ContextOption
+	if enc != nil && enc.CanDecrypt() {
+		decryptFn = enc.Decrypt
+		ctxOpts = append(ctxOpts, template.WithDecrypt(enc.Decrypt))
+	}
+
+	tmplCtx, err := template.NewContext(cfg, profileName, ctxOpts...)
+	if err != nil {
+		return nil
+	}
+
+	items := secrets.DiscoverByRendering(templateFiles, tmplCtx, decryptFn)
+	if len(items) == 0 {
+		return nil
+	}
+
+	cached := mgr.ListCached()
+	var missing []secrets.FetchItem
+	for _, item := range items {
+		if cached == nil {
+			missing = append(missing, item)
+		} else if _, ok := cached[item.Key.String()]; !ok {
+			missing = append(missing, item)
+		}
+	}
+
+	if len(missing) == 0 {
+		return nil
+	}
+
+	if dryRun {
+		fmt.Printf("Would fetch %d missing secrets\n", len(missing))
+		return nil
+	}
+
+	fmt.Printf("Fetching %d missing secrets...\n", len(missing))
+	result, err := mgr.Fetch(missing)
+	if err != nil {
+		return fmt.Errorf("fetching secrets: %w", err)
+	}
+
+	if verbose > 0 {
+		fmt.Printf("Fetched %d secrets (%d changed, %d unchanged)\n",
+			result.Total, result.Changed, result.Unchanged)
 	}
 
 	return nil
