@@ -203,6 +203,8 @@ func (a *Applier) checkChange(entry *source.Entry) (*FileChange, error) {
 			if targetHash != compareHash {
 				change.Status = StatusConflict
 				change.OldHash = targetHash
+			} else if permMismatch(entry, info) {
+				change.Status = StatusModified
 			} else {
 				// Content matches but no state entry - need to record state
 				change.Status = StatusStateOnly
@@ -238,7 +240,11 @@ func (a *Applier) checkChange(entry *source.Entry) (*FileChange, error) {
 
 	if existing.SourceHash == sourceHash {
 		if targetHash == existing.AppliedHash {
-			change.Status = StatusUnchanged
+			if permMismatch(entry, info) {
+				change.Status = StatusModified
+			} else {
+				change.Status = StatusUnchanged
+			}
 		} else {
 			change.Status = StatusConflict
 		}
@@ -332,6 +338,9 @@ func (a *Applier) applyFile(entry *source.Entry, sourceHash string) error {
 		}
 	} else {
 		if err := os.WriteFile(entry.TargetPath, content, mode); err != nil {
+			return err
+		}
+		if err := os.Chmod(entry.TargetPath, mode); err != nil {
 			return err
 		}
 	}

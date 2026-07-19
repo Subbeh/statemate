@@ -19,6 +19,20 @@ type Change struct {
 	NewHash string
 }
 
+func desiredMode(entry *source.Entry) os.FileMode {
+	if entry.Attrs.Perm != 0 {
+		return os.FileMode(entry.Attrs.Perm)
+	}
+	return entry.Mode.Perm()
+}
+
+func permMismatch(entry *source.Entry, info os.FileInfo) bool {
+	if entry.Attrs.Perm == 0 {
+		return false
+	}
+	return info.Mode().Perm() != desiredMode(entry)
+}
+
 func ComputeChanges(tree *source.Tree, db *state.DB) ([]*Change, error) {
 	var changes []*Change
 
@@ -76,6 +90,8 @@ func computeChange(entry *source.Entry, db *state.DB) (*Change, error) {
 			if targetHash != sourceHash {
 				change.Status = StatusConflict
 				change.OldHash = targetHash
+			} else if permMismatch(entry, info) {
+				change.Status = StatusModified
 			} else {
 				change.Status = StatusUnchanged
 			}
@@ -110,7 +126,11 @@ func computeChange(entry *source.Entry, db *state.DB) (*Change, error) {
 
 	if existing.SourceHash == sourceHash {
 		if targetHash == existing.AppliedHash {
-			change.Status = StatusUnchanged
+			if permMismatch(entry, info) {
+				change.Status = StatusModified
+			} else {
+				change.Status = StatusUnchanged
+			}
 		} else {
 			change.Status = StatusConflict
 		}
