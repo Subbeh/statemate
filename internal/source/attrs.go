@@ -56,7 +56,7 @@ func ParseAttrs(name string) (baseName string, attrs Attrs) {
 			switch part {
 			case "encrypted":
 				attrs.Encrypted = true
-			case "template":
+			case "template", "tmpl":
 				attrs.Template = true
 			case "symlink":
 				attrs.Symlink = true
