@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-22
+
 ### Fixed
 - `mate status` and `mate apply` now detect permission mismatches — files with correct content but wrong permissions show as modified and get fixed on apply
 - `perm-r`, `owner-r`, and `group-r` recursive attributes on directories now correctly propagate to child files
@@ -14,10 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `mate encrypt` and `mate decrypt` now work with files outside the source tree (e.g. var_files in `.matedata/`)
 - Encrypted var_files (`#encrypted` suffix) are now transparently decrypted during template rendering
 - Tab completion now shows only files in the current directory tree with relative paths instead of all files with absolute paths
+- Scripts now run correctly when not marked executable (falls back to shebang interpreter)
+- Package install check separated from extras detection for accurate status
+- Scripts respect profile inheritance for filtering
 
 ### Added
 - `ignore` key in `mate.yaml` for gitignore-style patterns to exclude files from scanning (replaces `.mateignore` files)
 - `ignore` key in per-source `.mate.yaml` for patterns scoped to that source only
+- `#tmpl` as a short alias for `#template` file suffix
 - Documented the `STATEMATE_DIR` environment variable, which overrides `source_dir` to point at a different dotfiles directory
 - Per-source `target_base` in `.mate.yaml` to deploy files to a different root directory
 - `.mate.yaml` files now support template rendering (use variables like `{{ .Vars.workspace }}`)
@@ -26,9 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `generate` directive in `.mate.yaml` to dynamically create files from templates
 - `indent` template function for proper YAML multiline content formatting
 - `daily`, `weekly`, and `monthly` script frequencies for interval-based execution
+- Script profile attribute for per-profile execution
+- `mate scripts list` shows source, profile, and timestamps
+- `mate apply` fetches missing secrets before applying
+- `mate apply` prompts to install missing packages during apply
+- `mate scripts run` subcommand with execution logging
 
 ### Changed
 - `mate profile` now shows the sources that apply to the active profile
+- Profile inheritance now respected globally for file filtering
 
 ### Removed
 - `.mateignore` files are no longer supported (use `ignore` in `mate.yaml` instead)
