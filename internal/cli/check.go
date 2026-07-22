@@ -8,6 +8,7 @@ import (
 	"github.com/subbeh/statemate/internal/config"
 	"github.com/subbeh/statemate/internal/encrypt"
 	"github.com/subbeh/statemate/internal/profile"
+	"github.com/subbeh/statemate/internal/secrets"
 	"github.com/subbeh/statemate/internal/state"
 	"github.com/subbeh/statemate/internal/target"
 	"github.com/subbeh/statemate/internal/template"
@@ -81,8 +82,10 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	defer func() { _ = db.Close() }()
 
 	var enc *encrypt.AgeEncryptor
+	identitySource := ""
 	if cfg.Age != nil {
 		enc, _ = encrypt.NewAgeEncryptor(cfg.Age.Identity, cfg.Age.IdentityCommand, cfg.Age.Recipients)
+		identitySource = cfg.Age.Identity
 	}
 
 	var ctxOpts []template.ContextOption
@@ -90,6 +93,13 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		ctxOpts = append(ctxOpts, template.WithDecrypt(enc.Decrypt))
 	}
 	tmplCtx, _ := template.NewContext(cfg, profileName, ctxOpts...)
+
+	if mgr, err := secrets.NewManager(enc, identitySource, cfg.SecretsCache); err == nil {
+		tmplCtx.SecretLookup = func(item, typ, field string) (string, error) {
+			key := secrets.CacheKey{Provider: "bitwarden", Item: item, Type: typ, Field: field}
+			return mgr.Get(key)
+		}
+	}
 
 	changes, err := target.ComputeChanges(tree, db, target.ComputeOpts{
 		TmplCtx: tmplCtx,
