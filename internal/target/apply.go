@@ -30,12 +30,6 @@ type ApplyResult struct {
 	DryRun   bool
 }
 
-type FileChange struct {
-	Entry     *source.Entry
-	Status    ChangeStatus
-	OldHash   string
-	NewHash   string
-}
 
 type ChangeStatus int
 
@@ -88,7 +82,7 @@ func (a *Applier) Apply(tree *source.Tree) (*ApplyResult, error) {
 	}
 
 	for _, entry := range tree.Files() {
-		change, err := a.checkChange(entry)
+		change, err := computeChange(entry, a.db, &ComputeOpts{TmplCtx: a.tmplCtx, Enc: a.enc})
 		if err != nil {
 			return nil, fmt.Errorf("checking %s: %w", entry.SourcePath, err)
 		}
@@ -150,115 +144,6 @@ func (a *Applier) Apply(tree *source.Tree) (*ApplyResult, error) {
 	return result, nil
 }
 
-func (a *Applier) checkChange(entry *source.Entry) (*FileChange, error) {
-	change := &FileChange{Entry: entry}
-
-	var sourceHash string
-	var err error
-	if entry.Generated {
-		sourceHash = state.HashBytes(a.getGeneratedContent(entry))
-	} else {
-		sourceHash, err = state.HashFile(entry.SourcePath)
-		if err != nil {
-			return nil, err
-		}
-	}
-	change.NewHash = sourceHash
-
-	existing, err := a.db.GetFile(entry.TargetPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if existing == nil {
-		info, err := os.Lstat(entry.TargetPath)
-		if os.IsNotExist(err) {
-			change.Status = StatusNew
-		} else if err != nil {
-			return nil, err
-		} else {
-			// If target is a symlink but source is not a symlink type, treat as modified
-			targetIsSymlink := info.Mode()&os.ModeSymlink != 0
-			if targetIsSymlink && !entry.Attrs.Symlink {
-				change.Status = StatusModified
-				return change, nil
-			}
-
-			targetHash, err := state.HashFile(entry.TargetPath)
-			if err != nil {
-				return nil, err
-			}
-			// For encrypted/template files, compare rendered content, not source hash
-			compareHash := sourceHash
-			if entry.Attrs.Encrypted || entry.Attrs.Template {
-				renderedHash, err := a.getRenderedHash(entry)
-				if err != nil {
-					// If we can't render, fall back to treating as conflict
-					change.Status = StatusConflict
-					change.OldHash = targetHash
-					return change, nil
-				}
-				compareHash = renderedHash
-			}
-			if targetHash != compareHash {
-				change.Status = StatusConflict
-				change.OldHash = targetHash
-			} else if permMismatch(entry, info) {
-				change.Status = StatusModified
-			} else {
-				// Content matches but no state entry - need to record state
-				change.Status = StatusStateOnly
-			}
-		}
-		return change, nil
-	}
-
-	change.OldHash = existing.AppliedHash
-
-	info, err := os.Lstat(entry.TargetPath)
-	targetExists := err == nil
-	if err != nil && !os.IsNotExist(err) {
-		return nil, err
-	}
-
-	if !targetExists {
-		change.Status = StatusModified
-		return change, nil
-	}
-
-	// If target is a symlink but source is not a symlink type, treat as modified
-	targetIsSymlink := info.Mode()&os.ModeSymlink != 0
-	if targetIsSymlink && !entry.Attrs.Symlink {
-		change.Status = StatusModified
-		return change, nil
-	}
-
-	targetHash, err := state.HashFile(entry.TargetPath)
-	if err != nil {
-		return nil, err
-	}
-
-	if existing.SourceHash == sourceHash {
-		if targetHash == existing.AppliedHash {
-			if permMismatch(entry, info) {
-				change.Status = StatusModified
-			} else {
-				change.Status = StatusUnchanged
-			}
-		} else {
-			change.Status = StatusConflict
-		}
-		return change, nil
-	}
-
-	if targetHash != existing.AppliedHash {
-		change.Status = StatusConflict
-	} else {
-		change.Status = StatusModified
-	}
-
-	return change, nil
-}
 
 func (a *Applier) applyFile(entry *source.Entry, sourceHash string) error {
 	if entry.Attrs.Symlink {
@@ -295,7 +180,7 @@ func (a *Applier) applyFile(entry *source.Entry, sourceHash string) error {
 	var err error
 
 	if entry.Generated {
-		content = a.getGeneratedContent(entry)
+		content = []byte(entry.GeneratedContent)
 	} else {
 		content, err = os.ReadFile(entry.SourcePath)
 		if err != nil {
@@ -371,7 +256,7 @@ func (a *Applier) applyFile(entry *source.Entry, sourceHash string) error {
 	})
 }
 
-func (a *Applier) promptConflict(change *FileChange) (string, error) {
+func (a *Applier) promptConflict(change *Change) (string, error) {
 	fmt.Printf("\nConflict: %s\n", change.Entry.TargetPath)
 	fmt.Printf("  Target has been modified since last apply\n")
 
@@ -521,32 +406,6 @@ func (a *Applier) importFile(entry *source.Entry) error {
 	})
 }
 
-func (a *Applier) getGeneratedContent(entry *source.Entry) []byte {
-	return []byte(entry.GeneratedContent)
-}
-
-func (a *Applier) getRenderedHash(entry *source.Entry) (string, error) {
-	content, err := os.ReadFile(entry.SourcePath)
-	if err != nil {
-		return "", err
-	}
-
-	if entry.Attrs.Encrypted && a.enc != nil {
-		content, err = a.enc.Decrypt(content)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	if entry.Attrs.Template && a.tmplCtx != nil {
-		content, err = template.Render(content, a.tmplCtx)
-		if err != nil {
-			return "", err
-		}
-	}
-
-	return state.HashBytes(content), nil
-}
 
 func (a *Applier) recordState(entry *source.Entry, sourceHash string) error {
 	targetHash, err := state.HashFile(entry.TargetPath)
@@ -568,7 +427,7 @@ func (a *Applier) recordState(entry *source.Entry, sourceHash string) error {
 	})
 }
 
-func (a *Applier) printChange(change *FileChange) {
+func (a *Applier) printChange(change *Change) {
 	var prefix string
 	switch change.Status {
 	case StatusNew:

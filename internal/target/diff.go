@@ -53,7 +53,7 @@ func ComputeChanges(tree *source.Tree, db *state.DB, opts ...ComputeOpts) ([]*Ch
 		if err != nil {
 			return nil, err
 		}
-		if change.Status != StatusUnchanged {
+		if change.Status != StatusUnchanged && change.Status != StatusStateOnly {
 			changes = append(changes, change)
 		}
 	}
@@ -112,7 +112,7 @@ func computeChange(entry *source.Entry, db *state.DB, opts *ComputeOpts) (*Chang
 			} else if permMismatch(entry, info) {
 				change.Status = StatusModified
 			} else {
-				change.Status = StatusUnchanged
+				change.Status = StatusStateOnly
 			}
 		}
 		return change, nil
