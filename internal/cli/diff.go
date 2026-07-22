@@ -91,7 +91,33 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	changes, err := target.ComputeChanges(tree, db)
+	var ctxOpts []template.ContextOption
+	if enc != nil && enc.CanDecrypt() {
+		ctxOpts = append(ctxOpts, template.WithDecrypt(enc.Decrypt))
+	}
+	tmplCtx, err := template.NewContext(cfg, profileName, ctxOpts...)
+	if err != nil {
+		return fmt.Errorf("creating template context: %w", err)
+	}
+
+	{
+		identitySource := ""
+		if cfg.Age != nil {
+			identitySource = cfg.Age.Identity
+		}
+		mgr, err := secrets.NewManager(enc, identitySource, cfg.SecretsCache)
+		if err == nil {
+			tmplCtx.SecretLookup = func(item, typ, field string) (string, error) {
+				key := secrets.CacheKey{Provider: "bitwarden", Item: item, Type: typ, Field: field}
+				return mgr.Get(key)
+			}
+		}
+	}
+
+	changes, err := target.ComputeChanges(tree, db, target.ComputeOpts{
+		TmplCtx: tmplCtx,
+		Enc:     enc,
+	})
 	if err != nil {
 		return fmt.Errorf("computing changes: %w", err)
 	}
@@ -114,29 +140,6 @@ func runDiff(cmd *cobra.Command, args []string) error {
 	if len(changes) == 0 {
 		fmt.Println("No changes")
 		return nil
-	}
-
-	var ctxOpts []template.ContextOption
-	if enc != nil && enc.CanDecrypt() {
-		ctxOpts = append(ctxOpts, template.WithDecrypt(enc.Decrypt))
-	}
-	tmplCtx, err := template.NewContext(cfg, profileName, ctxOpts...)
-	if err != nil {
-		return fmt.Errorf("creating template context: %w", err)
-	}
-
-	{
-		identitySource := ""
-		if cfg.Age != nil {
-			identitySource = cfg.Age.Identity
-		}
-		mgr, err := secrets.NewManager(enc, identitySource, cfg.SecretsCache)
-		if err == nil {
-			tmplCtx.SecretLookup = func(item, typ, field string) (string, error) {
-				key := secrets.CacheKey{Provider: "bitwarden", Item: item, Type: typ, Field: field}
-				return mgr.Get(key)
-			}
-		}
 	}
 
 	diffTool, _ := cmd.Flags().GetString("tool")

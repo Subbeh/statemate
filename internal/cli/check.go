@@ -6,9 +6,11 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/subbeh/statemate/internal/config"
+	"github.com/subbeh/statemate/internal/encrypt"
 	"github.com/subbeh/statemate/internal/profile"
 	"github.com/subbeh/statemate/internal/state"
 	"github.com/subbeh/statemate/internal/target"
+	"github.com/subbeh/statemate/internal/template"
 	"github.com/subbeh/statemate/internal/util"
 )
 
@@ -78,7 +80,21 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = db.Close() }()
 
-	changes, err := target.ComputeChanges(tree, db)
+	var enc *encrypt.AgeEncryptor
+	if cfg.Age != nil {
+		enc, _ = encrypt.NewAgeEncryptor(cfg.Age.Identity, cfg.Age.IdentityCommand, cfg.Age.Recipients)
+	}
+
+	var ctxOpts []template.ContextOption
+	if enc != nil && enc.CanDecrypt() {
+		ctxOpts = append(ctxOpts, template.WithDecrypt(enc.Decrypt))
+	}
+	tmplCtx, _ := template.NewContext(cfg, profileName, ctxOpts...)
+
+	changes, err := target.ComputeChanges(tree, db, target.ComputeOpts{
+		TmplCtx: tmplCtx,
+		Enc:     enc,
+	})
 	if err != nil {
 		return fmt.Errorf("computing changes: %w", err)
 	}

@@ -8,8 +8,10 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
+	"github.com/subbeh/statemate/internal/encrypt"
 	"github.com/subbeh/statemate/internal/source"
 	"github.com/subbeh/statemate/internal/state"
+	"github.com/subbeh/statemate/internal/template"
 )
 
 type Change struct {
@@ -33,11 +35,21 @@ func permMismatch(entry *source.Entry, info os.FileInfo) bool {
 	return info.Mode().Perm() != desiredMode(entry)
 }
 
-func ComputeChanges(tree *source.Tree, db *state.DB) ([]*Change, error) {
+type ComputeOpts struct {
+	TmplCtx *template.Context
+	Enc     *encrypt.AgeEncryptor
+}
+
+func ComputeChanges(tree *source.Tree, db *state.DB, opts ...ComputeOpts) ([]*Change, error) {
+	var o ComputeOpts
+	if len(opts) > 0 {
+		o = opts[0]
+	}
+
 	var changes []*Change
 
 	for _, entry := range tree.Files() {
-		change, err := computeChange(entry, db)
+		change, err := computeChange(entry, db, &o)
 		if err != nil {
 			return nil, err
 		}
@@ -49,7 +61,7 @@ func ComputeChanges(tree *source.Tree, db *state.DB) ([]*Change, error) {
 	return changes, nil
 }
 
-func computeChange(entry *source.Entry, db *state.DB) (*Change, error) {
+func computeChange(entry *source.Entry, db *state.DB, opts *ComputeOpts) (*Change, error) {
 	change := &Change{Entry: entry}
 
 	var sourceHash string
@@ -63,6 +75,13 @@ func computeChange(entry *source.Entry, db *state.DB) (*Change, error) {
 		}
 	}
 	change.NewHash = sourceHash
+
+	renderedHash := sourceHash
+	if !entry.Generated && (entry.Attrs.Encrypted || entry.Attrs.Template) {
+		if h, err := getRenderedHash(entry, opts); err == nil {
+			renderedHash = h
+		}
+	}
 
 	existing, err := db.GetFile(entry.TargetPath)
 	if err != nil {
@@ -87,7 +106,7 @@ func computeChange(entry *source.Entry, db *state.DB) (*Change, error) {
 			if err != nil {
 				return nil, err
 			}
-			if targetHash != sourceHash {
+			if targetHash != renderedHash {
 				change.Status = StatusConflict
 				change.OldHash = targetHash
 			} else if permMismatch(entry, info) {
@@ -126,7 +145,9 @@ func computeChange(entry *source.Entry, db *state.DB) (*Change, error) {
 
 	if existing.SourceHash == sourceHash {
 		if targetHash == existing.AppliedHash {
-			if permMismatch(entry, info) {
+			if renderedHash != targetHash {
+				change.Status = StatusModified
+			} else if permMismatch(entry, info) {
 				change.Status = StatusModified
 			} else {
 				change.Status = StatusUnchanged
@@ -254,4 +275,27 @@ func IsBinaryFile(path string) bool {
 		}
 	}
 	return false
+}
+
+func getRenderedHash(entry *source.Entry, opts *ComputeOpts) (string, error) {
+	content, err := os.ReadFile(entry.SourcePath)
+	if err != nil {
+		return "", err
+	}
+
+	if entry.Attrs.Encrypted && opts.Enc != nil {
+		content, err = opts.Enc.Decrypt(content)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	if entry.Attrs.Template && opts.TmplCtx != nil {
+		content, err = template.Render(content, opts.TmplCtx)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	return state.HashBytes(content), nil
 }

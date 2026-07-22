@@ -84,7 +84,23 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 	defer func() { _ = db.Close() }()
 
-	changes, err := target.ComputeChanges(tree, db)
+	var enc *encrypt.AgeEncryptor
+	identitySource := ""
+	if cfg.Age != nil {
+		enc, _ = encrypt.NewAgeEncryptor(cfg.Age.Identity, cfg.Age.IdentityCommand, cfg.Age.Recipients)
+		identitySource = cfg.Age.Identity
+	}
+
+	var ctxOpts []template.ContextOption
+	if enc != nil && enc.CanDecrypt() {
+		ctxOpts = append(ctxOpts, template.WithDecrypt(enc.Decrypt))
+	}
+	tmplCtx, _ := template.NewContext(cfg, profileName, ctxOpts...)
+
+	changes, err := target.ComputeChanges(tree, db, target.ComputeOpts{
+		TmplCtx: tmplCtx,
+		Enc:     enc,
+	})
 	if err != nil {
 		return fmt.Errorf("computing changes: %w", err)
 	}
@@ -108,21 +124,12 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	var pendingSecrets int
 	{
-		var enc *encrypt.AgeEncryptor
-		identitySource := ""
-		if cfg.Age != nil {
-			enc, _ = encrypt.NewAgeEncryptor(cfg.Age.Identity, cfg.Age.IdentityCommand, cfg.Age.Recipients)
-			identitySource = cfg.Age.Identity
-		}
 		if mgr, err := secrets.NewManager(enc, identitySource, cfg.SecretsCache); err == nil {
 			templateFiles := discoverTemplateFiles(cfg, sourcePaths)
 			var decryptFn func([]byte) ([]byte, error)
-			var ctxOpts []template.ContextOption
 			if enc != nil && enc.CanDecrypt() {
 				decryptFn = enc.Decrypt
-				ctxOpts = append(ctxOpts, template.WithDecrypt(enc.Decrypt))
 			}
-			tmplCtx, _ := template.NewContext(cfg, profileName, ctxOpts...)
 			items := secrets.DiscoverByRendering(templateFiles, tmplCtx, decryptFn)
 			cached := mgr.ListCached()
 			for _, item := range items {

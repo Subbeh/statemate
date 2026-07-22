@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `mate status`, `mate diff`, and `mate check` now render templates before comparing hashes — variable changes in include files are correctly detected as pending changes
+
 ## [0.2.0] - 2026-07-22
 
 ### Fixed
