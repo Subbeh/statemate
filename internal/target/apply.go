@@ -240,6 +240,13 @@ func (a *Applier) checkChange(entry *source.Entry) (*FileChange, error) {
 
 	if existing.SourceHash == sourceHash {
 		if targetHash == existing.AppliedHash {
+			if entry.Attrs.Template || entry.Attrs.Encrypted {
+				renderedHash, err := a.getRenderedHash(entry)
+				if err == nil && renderedHash != targetHash {
+					change.Status = StatusModified
+					return change, nil
+				}
+			}
 			if permMismatch(entry, info) {
 				change.Status = StatusModified
 			} else {
