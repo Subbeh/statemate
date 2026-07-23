@@ -76,8 +76,17 @@ func (a *Applier) Apply(tree *source.Tree) (*ApplyResult, error) {
 		if a.dryRun {
 			continue
 		}
-		if err := os.MkdirAll(dir.TargetPath, 0755); err != nil {
+		dirMode := os.FileMode(0755)
+		if dir.Attrs.Perm != 0 {
+			dirMode = os.FileMode(dir.Attrs.Perm)
+		}
+		if err := os.MkdirAll(dir.TargetPath, dirMode); err != nil {
 			return nil, fmt.Errorf("creating directory %s: %w", dir.TargetPath, err)
+		}
+		if dir.Attrs.Perm != 0 {
+			if err := os.Chmod(dir.TargetPath, dirMode); err != nil {
+				return nil, fmt.Errorf("setting permissions on %s: %w", dir.TargetPath, err)
+			}
 		}
 	}
 
